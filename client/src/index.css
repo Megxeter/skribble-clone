@@ -695,6 +695,31 @@ body {
   background-color: var(--color-danger);
 }
 
+.footer-sound-toggle-btn {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.footer-sound-toggle-btn:hover {
+  background: var(--color-surface-active);
+  color: var(--color-text);
+  border-color: var(--color-border-hover);
+}
+
+.footer-sound-toggle-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .footer-toggle-btn {
   background: none;
   border: none;
@@ -1088,6 +1113,46 @@ body {
   font-family: var(--font-mono);
   font-size: 0.9rem;
   color: var(--color-text-muted);
+}
+
+/* Toast Notification for Player Joins */
+.toast-container {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast-join {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-hover);
+  border-left: 3px solid var(--color-accent);
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: toastFadeIn 0.2s ease forwards;
+  pointer-events: auto;
+}
+
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 

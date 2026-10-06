@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from './hooks/useSocket';
 import {
   SOCKET_EVENTS,
   RoomStatePayload,
+  PlayerJoinedPayload,
   ErrorPayload,
   LeaveRoomPayload,
   HealthResponse,
@@ -10,6 +11,12 @@ import {
 import { Landing } from './components/Landing';
 import { Lobby } from './components/Lobby';
 import { GameView } from './components/GameView';
+import {
+  playJoinSound,
+  getSoundEnabled,
+  setSoundEnabled,
+  setupAudioUnlockListeners,
+} from './utils/sound';
 
 export const App: React.FC = () => {
   const { socket, isConnected, socketId, transport } = useSocket();
@@ -20,6 +27,24 @@ export const App: React.FC = () => {
   const [showSystemInfo, setShowSystemInfo] = useState<boolean>(false);
   const [healthData, setHealthData] = useState<HealthResponse | null>(null);
 
+  // Sound preference and visual toast notification
+  const [soundEnabled, setSoundEnabledState] = useState<boolean>(getSoundEnabled);
+  const [joinToast, setJoinToast] = useState<string | null>(null);
+  const knownPlayerIdsRef = useRef<Set<string>>(new Set());
+
+  // Setup browser autoplay gesture unlock listeners on mount
+  useEffect(() => {
+    setupAudioUnlockListeners();
+  }, []);
+
+  const handleToggleSound = useCallback(() => {
+    setSoundEnabledState((prev) => {
+      const next = !prev;
+      setSoundEnabled(next);
+      return next;
+    });
+  }, []);
+
   // Check URL query param for direct invite link (?room=CODE)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -29,11 +54,24 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Socket event listeners for Room Management
+  // Auto-dismiss join toast
+  useEffect(() => {
+    if (!joinToast) return;
+    const timer = setTimeout(() => {
+      setJoinToast(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [joinToast]);
+
+  // Socket event listeners for Room Management & Player Joins
   useEffect(() => {
     if (!socket) return;
 
     const handleRoomState = (state: RoomStatePayload) => {
+      // If entering a new room session, record known players without playing sound
+      if (!roomState || roomState.roomId !== state.roomId) {
+        knownPlayerIdsRef.current = new Set(state.players.map((p) => p.id));
+      }
       setRoomState(state);
       setErrorMessage(null);
 
@@ -45,21 +83,40 @@ export const App: React.FC = () => {
       }
     };
 
+    const handlePlayerJoined = (payload: PlayerJoinedPayload) => {
+      const newPlayer = payload.player;
+      if (!newPlayer || newPlayer.id === socketId) return;
+
+      // Avoid replaying if player ID was already known in this session
+      if (knownPlayerIdsRef.current.has(newPlayer.id)) return;
+      knownPlayerIdsRef.current.add(newPlayer.id);
+
+      // Play audio tone once
+      playJoinSound();
+
+      // Show temporary visual join notification
+      setJoinToast(`${newPlayer.name} joined the room`);
+    };
+
     const handleError = (error: ErrorPayload) => {
       setErrorMessage(error.message);
     };
 
     socket.on(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
+    socket.on(SOCKET_EVENTS.PLAYER_JOINED, handlePlayerJoined);
     socket.on(SOCKET_EVENTS.ERROR_MESSAGE, handleError);
 
     return () => {
       socket.off(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
+      socket.off(SOCKET_EVENTS.PLAYER_JOINED, handlePlayerJoined);
       socket.off(SOCKET_EVENTS.ERROR_MESSAGE, handleError);
     };
-  }, [socket]);
+  }, [socket, roomState, socketId]);
 
   // Handle leaving the current room
   const handleLeaveRoom = useCallback(() => {
+    knownPlayerIdsRef.current.clear();
+    setJoinToast(null);
     if (socket && roomState) {
       const payload: LeaveRoomPayload = { roomId: roomState.roomId };
       socket.emit(SOCKET_EVENTS.LEAVE_ROOM, payload);
@@ -94,6 +151,15 @@ export const App: React.FC = () => {
 
   return (
     <div className="container">
+      {/* Toast Notification for Player Joins */}
+      <div className="toast-container" aria-live="polite">
+        {joinToast && (
+          <div className="toast-join" role="status">
+            <span>{joinToast}</span>
+          </div>
+        )}
+      </div>
+
       {/* Dynamic Screen Routing: Landing vs Lobby vs In-Game */}
       {!roomState ? (
         <Landing
@@ -109,6 +175,8 @@ export const App: React.FC = () => {
           roomState={roomState}
           myId={socketId || ''}
           onLeaveRoom={handleLeaveRoom}
+          soundEnabled={soundEnabled}
+          onToggleSound={handleToggleSound}
         />
       ) : (
         <GameView
@@ -125,6 +193,15 @@ export const App: React.FC = () => {
           <div className="footer-status">
             <span className={`status-dot ${isConnected ? 'online' : 'offline'}`}></span>
             <span>{isConnected ? `Connected (${transport})` : 'Disconnected'}</span>
+            <button
+              type="button"
+              className="footer-sound-toggle-btn"
+              onClick={handleToggleSound}
+              aria-label={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
+              aria-pressed={soundEnabled}
+            >
+              Sound: {soundEnabled ? 'On' : 'Off'}
+            </button>
           </div>
           <button
             type="button"

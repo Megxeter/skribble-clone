@@ -15,6 +15,8 @@ interface LobbyProps {
   roomState: RoomStatePayload;
   myId: string;
   onLeaveRoom: () => void;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
 }
 
 export const Lobby: React.FC<LobbyProps> = ({
@@ -22,6 +24,8 @@ export const Lobby: React.FC<LobbyProps> = ({
   roomState,
   myId,
   onLeaveRoom,
+  soundEnabled = true,
+  onToggleSound,
 }) => {
   const isHost = roomState.hostId === myId;
   const myPlayer = roomState.players.find((p) => p.id === myId);
@@ -89,6 +93,17 @@ export const Lobby: React.FC<LobbyProps> = ({
             <button className="btn btn-secondary btn-sm" onClick={handleCopyLink}>
               {copiedLink ? 'Link Copied' : 'Copy Invite Link'}
             </button>
+            {onToggleSound && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onToggleSound}
+                aria-label={soundEnabled ? 'Mute sound effects' : 'Enable sound effects'}
+                aria-pressed={soundEnabled}
+              >
+                Sound: {soundEnabled ? 'On' : 'Off'}
+              </button>
+            )}
           </div>
 
           <div className="room-badges">

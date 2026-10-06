@@ -17,6 +17,7 @@ The application features server-authoritative state management, 1-click public m
 * **Understated, Accessible Interface:**
   * Clean neutral palette with a subtle blue accent, high contrast text, and visible keyboard focus.
   * Zero emojis, no flashy gradients, and no decorative clutter.
+  * **Audio Cues & Sound Toggle:** Subtle, low-volume chime synthesized via native browser Web Audio API when another player joins, with an accessible Sound On/Off toggle and local preference memory.
 * **Real-Time Drawing Engine:**
   * **Normalized Coordinates:** Captures canvas strokes as relative floating-point ratios (`0.0`–`1.0`), guaranteeing distortion-free rendering across any screen resolution or mobile device.
   * **Drawer Toolkit:** 16 colors, 4 stroke sizes, eraser, undo last stroke, and wipe canvas.
