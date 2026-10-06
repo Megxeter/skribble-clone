@@ -95,6 +95,9 @@ npm run test:m1
 
 # Milestone 2: Multi-client matchmaking, private codes, capacity, settings, host migration, 2-player start
 npm run test:m2
+
+# Milestone 3: Game loop, word selection secrecy, synchronized canvas, drawer-only authority, hints
+npm run test:m3
 ```
 
 ---

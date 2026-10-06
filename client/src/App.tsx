@@ -9,6 +9,7 @@ import {
 } from '@skribbl/shared';
 import { Landing } from './components/Landing';
 import { Lobby } from './components/Lobby';
+import { GameView } from './components/GameView';
 
 export const App: React.FC = () => {
   const { socket, isConnected, socketId, transport } = useSocket();
@@ -110,28 +111,12 @@ export const App: React.FC = () => {
           onLeaveRoom={handleLeaveRoom}
         />
       ) : (
-        /* In-game transition stub (Milestone 3 will implement canvas & gameplay) */
-        <div className="card game-started-card">
-          <div className="card-title">
-            <span>Game Started (Status: {roomState.status})</span>
-          </div>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
-            The round has begun. Turn rotation, word selection, and real-time canvas synchronization are scheduled for Milestone 3.
-          </p>
-          <div className="info-grid" style={{ marginBottom: '1.5rem' }}>
-            <div className="info-item">
-              <div className="info-label">Active Players</div>
-              <div className="info-value">{roomState.players.length}</div>
-            </div>
-            <div className="info-item">
-              <div className="info-label">Current Round</div>
-              <div className="info-value">1 / {roomState.settings.rounds}</div>
-            </div>
-          </div>
-          <button type="button" className="btn btn-secondary" onClick={handleLeaveRoom}>
-            Return to Lobby
-          </button>
-        </div>
+        <GameView
+          socket={socket}
+          myId={socketId || ''}
+          roomState={roomState}
+          onLeaveRoom={handleLeaveRoom}
+        />
       )}
 
       {/* Understated Diagnostic Footer */}

@@ -92,7 +92,7 @@ export interface PlayerLeftPayload {
 }
 
 export interface ErrorPayload {
-  code: 'INSUFFICIENT_PLAYERS' | 'ROOM_FULL' | 'ROOM_NOT_FOUND' | 'GAME_IN_PROGRESS' | 'SERVER_ERROR' | 'UNAUTHORIZED' | 'INVALID_SETTINGS';
+  code: 'INSUFFICIENT_PLAYERS' | 'ROOM_FULL' | 'ROOM_NOT_FOUND' | 'GAME_IN_PROGRESS' | 'SERVER_ERROR' | 'UNAUTHORIZED' | 'INVALID_SETTINGS' | 'NOT_DRAWER' | 'INVALID_WORD';
   message: string;
 }
 
@@ -112,6 +112,7 @@ export interface GameStatePayload {
 
 export interface RoundStartPayload {
   drawerId: string;
+  drawerName?: string;
   wordOptions?: string[]; // Only provided to drawer socket
   drawTime: number;
   round: number;
@@ -158,6 +159,10 @@ export interface DrawMovePayload {
 }
 
 export interface DrawEndPayload {}
+
+export interface DrawSyncPayload {
+  strokes: Stroke[];
+}
 
 export interface StrokePoint {
   x: number;

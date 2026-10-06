@@ -8,9 +8,11 @@ import {
   SetReadyPayload,
   StartGamePayload,
   LeaveRoomPayload,
+  ChooseWordPayload,
 } from '@skribbl/shared';
 import { RoomManager } from '../services/RoomManager';
 import { Player } from '../models/Player';
+import { Game } from '../models/Game';
 
 export function registerRoomHandlers(io: Server, socket: Socket): void {
   const roomManager = RoomManager.getInstance();
@@ -199,16 +201,39 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
         return;
       }
 
-      // Transition to game start
-      room.status = 'word_selecting';
-      console.log(`[Room ${room.code}] Game started with ${room.players.size} players!`);
-      io.to(room.id).emit(SOCKET_EVENTS.ROOM_STATE, room.toDTO());
+      // Initialize and start authoritative turn machine
+      room.game = new Game(room, io);
+      room.game.start();
     } catch (err: unknown) {
       console.error(`[Socket ${socket.id}] start_game error:`, err);
     }
   });
 
-  // 7. Explicit Leave Room
+  // 7. Choose Word (Drawer only)
+  socket.on(SOCKET_EVENTS.CHOOSE_WORD, (payload: ChooseWordPayload) => {
+    try {
+      const room = roomManager.getRoomBySocket(socket.id);
+      if (!room || !room.game) {
+        socket.emit(SOCKET_EVENTS.ERROR_MESSAGE, {
+          code: 'SERVER_ERROR',
+          message: 'No active game in this room.'
+        });
+        return;
+      }
+
+      const result = room.game.chooseWord(socket.id, payload.word);
+      if (!result.success) {
+        socket.emit(SOCKET_EVENTS.ERROR_MESSAGE, {
+          code: result.error?.includes('drawer') ? 'NOT_DRAWER' : 'INVALID_WORD',
+          message: result.error || 'Failed to choose word.'
+        });
+      }
+    } catch (err: unknown) {
+      console.error(`[Socket ${socket.id}] choose_word error:`, err);
+    }
+  });
+
+  // 8. Explicit Leave Room
   socket.on(SOCKET_EVENTS.LEAVE_ROOM, (_payload?: LeaveRoomPayload) => {
     handlePlayerExit(io, socket);
   });

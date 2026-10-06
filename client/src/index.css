@@ -741,3 +741,353 @@ body {
   color: var(--color-text);
   word-break: break-all;
 }
+
+/* ========================================================
+   Milestone 3: Game View, Canvas & Drawing Styles
+======================================================== */
+.game-view-container {
+  width: 100%;
+}
+
+.game-header-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.game-header-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.game-header-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.game-header-val {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+}
+
+.time-warning {
+  color: var(--color-warning);
+}
+
+.game-header-word-section {
+  flex: 1;
+  text-align: center;
+  min-width: 200px;
+}
+
+.game-phase-text {
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.word-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.word-banner-label {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.word-banner-text {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--color-text);
+}
+
+.word-length-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+}
+
+.intermission-banner .revealed-word {
+  color: var(--color-accent);
+}
+
+/* Game Main Grid: Scores on left, Canvas on right */
+.game-main-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 860px) {
+  .game-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.game-players-card {
+  height: fit-content;
+  max-height: 560px;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.game-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.game-player-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.game-player-row.is-drawer {
+  border-color: var(--color-accent);
+  background: var(--color-surface-active);
+}
+
+.game-player-row.is-me {
+  font-weight: 500;
+}
+
+.game-player-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-player-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-player-name {
+  font-size: 0.85rem;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-player-role {
+  font-size: 0.7rem;
+  color: var(--color-text-dim);
+}
+
+.game-player-score {
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* Canvas Area */
+.game-canvas-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.canvas-card {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background-color: var(--color-surface);
+}
+
+.canvas-wrapper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background-color: #ffffff;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.drawing-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.cursor-draw {
+  cursor: crosshair;
+}
+
+.cursor-disabled {
+  cursor: default;
+}
+
+/* Drawing Toolbar */
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  font-weight: 600;
+}
+
+.color-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.color-swatch.selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.size-selector-group,
+.tool-actions-group {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.size-btn.active,
+.tool-btn.active {
+  background: var(--color-accent);
+  color: #ffffff;
+  border-color: var(--color-accent);
+}
+
+/* Word Selection Modal */
+.word-select-content {
+  text-align: center;
+  max-width: 440px;
+}
+
+.selection-timer-badge {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.word-select-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.word-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.word-option-btn {
+  padding: 0.9rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Game Over Modal */
+.game-over-modal {
+  max-width: 440px;
+}
+
+.game-over-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.rank-badge {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-accent);
+  width: 28px;
+}
+
+.leaderboard-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.leaderboard-score {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+

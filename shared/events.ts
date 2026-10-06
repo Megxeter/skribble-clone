@@ -32,6 +32,7 @@ export const SOCKET_EVENTS = {
   DRAW_END: 'draw_end',
   DRAW_UNDO: 'draw_undo',
   CANVAS_CLEAR: 'canvas_clear',
+  DRAW_SYNC: 'draw_sync',
 
   // Chat & Guesses
   CHAT_INPUT: 'chat_input',

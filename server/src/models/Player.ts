@@ -8,6 +8,7 @@ export class Player {
   public isHost: boolean = false;
   public hasGuessed: boolean = false;
   public isReady: boolean = false;
+  public isDrawer: boolean = false;
   public joinedAt: number = Date.now();
 
   constructor(socketId: string, name: string, isHost: boolean = false) {
@@ -36,6 +37,7 @@ export class Player {
       isHost: this.isHost,
       hasGuessed: this.hasGuessed,
       isReady: this.isReady,
+      isDrawer: this.isDrawer,
     };
   }
 }

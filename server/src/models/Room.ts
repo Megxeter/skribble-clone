@@ -1,5 +1,6 @@
 import { RoomSettings, RoomStatus, RoomStatePayload, SETTINGS_CONSTRAINTS } from '@skribbl/shared';
 import { Player } from './Player';
+import type { Game } from './Game';
 
 export class Room {
   public id: string;
@@ -11,6 +12,7 @@ export class Room {
   public status: RoomStatus = 'lobby';
   public createdAt: number = Date.now();
   public cleanupTimeout: NodeJS.Timeout | null = null;
+  public game: Game | null = null;
 
   constructor(id: string, code: string, isPublic: boolean, host: Player, initialSettings?: Partial<RoomSettings>) {
     this.id = id;
@@ -131,6 +133,9 @@ export class Room {
     if (!player) return null;
 
     this.players.delete(playerId);
+    if (this.game) {
+      this.game.handlePlayerDisconnect(playerId);
+    }
     this.transferHostIfNeeded();
     return player;
   }
