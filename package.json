@@ -15,7 +15,9 @@
     "build:shared": "npm run build --workspace=shared",
     "build:client": "npm run build --workspace=client",
     "build:server": "npm run build --workspace=server",
-    "start": "node server/dist/server.js"
+    "start": "node server/dist/server.js",
+    "test:m1": "node scripts/verify-milestone1.mjs",
+    "test:m2": "node scripts/verify-milestone2.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

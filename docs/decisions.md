@@ -49,3 +49,16 @@ This document records the foundational architectural, product, and scope decisio
 ### Decision 8: Ephemeral In-Memory State (No Database)
 * **Decision:** Rooms, active games, and player sessions live strictly in memory on the server (`RoomManager` Map). Rooms are automatically removed from memory 30 seconds after becoming empty.
 * **Rationale:** Keeps deployment completely lightweight, requires zero database provisioning or migrations, and fits cleanly within free-tier server resource limits.
+
+---
+
+### Decision 9: Ponytail "Lazy Senior Developer" Framework Adoption
+* **Decision:** Implement using the Ponytail development principles: YAGNI, standard library and native platform priority, minimal code diffs, and root-cause fixes while rigorously preserving core server trust boundaries.
+* **Rationale:** Eliminates boilerplate and dependency bloat while maintaining strict server-side validation and security invariants.
+
+---
+
+### Decision 10: Professional, Understated UI Design System
+* **Decision:** Use an understated, professional dark interface featuring neutral surfaces (`#0f1115` / `#16181d`), a single subtle accent (`#2563eb`), clean sans-serif typography (`Inter`), accessible contrast, and visible keyboard focus (`:focus-visible`). Remove all emojis, flashy gradients, neon highlights, and decorative clutter.
+* **Rationale:** Focuses user attention on gameplay, improves accessibility and visual hierarchy, and aligns with Ponytail's minimal, uncluttered design philosophy.
+

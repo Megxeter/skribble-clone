@@ -5,6 +5,7 @@ import fs from 'fs';
 import cors from 'cors';
 import { Server, Socket } from 'socket.io';
 import { HealthResponse } from '@skribbl/shared';
+import { registerRoomHandlers } from './handlers/roomHandler';
 
 const app = express();
 const server = http.createServer(app);
@@ -21,9 +22,12 @@ const io = new Server(server, {
   }
 });
 
-// Socket.IO lifecycle logging
+// Socket.IO lifecycle logging & handler registration
 io.on('connection', (socket: Socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`);
+
+  // Register Room & Matchmaking event handlers
+  registerRoomHandlers(io, socket);
 
   socket.on('disconnect', (reason: string) => {
     console.log(`[Socket.IO] Client disconnected: ${socket.id} (reason: ${reason})`);

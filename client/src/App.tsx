@@ -1,129 +1,190 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSocket } from './hooks/useSocket';
-import { HealthResponse } from '@skribbl/shared';
+import {
+  SOCKET_EVENTS,
+  RoomStatePayload,
+  ErrorPayload,
+  LeaveRoomPayload,
+  HealthResponse,
+} from '@skribbl/shared';
+import { Landing } from './components/Landing';
+import { Lobby } from './components/Lobby';
 
 export const App: React.FC = () => {
-  const { isConnected, socketId, transport, connectError } = useSocket();
-  const [healthData, setHealthData] = useState<HealthResponse | null>(null);
-  const [healthLoading, setHealthLoading] = useState<boolean>(false);
-  const [healthError, setHealthError] = useState<string | null>(null);
+  const { socket, isConnected, socketId, transport } = useSocket();
 
+  const [roomState, setRoomState] = useState<RoomStatePayload | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [initialRoomCode, setInitialRoomCode] = useState<string>('');
+  const [showSystemInfo, setShowSystemInfo] = useState<boolean>(false);
+  const [healthData, setHealthData] = useState<HealthResponse | null>(null);
+
+  // Check URL query param for direct invite link (?room=CODE)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('room');
+    if (code) {
+      setInitialRoomCode(code.toUpperCase());
+    }
+  }, []);
+
+  // Socket event listeners for Room Management
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleRoomState = (state: RoomStatePayload) => {
+      setRoomState(state);
+      setErrorMessage(null);
+
+      // Keep URL synced with current room code
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.get('room') !== state.code) {
+        currentUrl.searchParams.set('room', state.code);
+        window.history.replaceState({}, '', currentUrl.toString());
+      }
+    };
+
+    const handleError = (error: ErrorPayload) => {
+      setErrorMessage(error.message);
+    };
+
+    socket.on(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
+    socket.on(SOCKET_EVENTS.ERROR_MESSAGE, handleError);
+
+    return () => {
+      socket.off(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
+      socket.off(SOCKET_EVENTS.ERROR_MESSAGE, handleError);
+    };
+  }, [socket]);
+
+  // Handle leaving the current room
+  const handleLeaveRoom = useCallback(() => {
+    if (socket && roomState) {
+      const payload: LeaveRoomPayload = { roomId: roomState.roomId };
+      socket.emit(SOCKET_EVENTS.LEAVE_ROOM, payload);
+    }
+    setRoomState(null);
+    setErrorMessage(null);
+
+    // Clean up room query param
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('room');
+    window.history.replaceState({}, '', cleanUrl.pathname);
+  }, [socket, roomState]);
+
+  // Fetch server health on demand
   const fetchHealth = async () => {
-    setHealthLoading(true);
-    setHealthError(null);
     try {
       const res = await fetch('/health');
-      if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
+      if (res.ok) {
+        const data: HealthResponse = await res.json();
+        setHealthData(data);
       }
-      const data: HealthResponse = await res.json();
-      setHealthData(data);
-    } catch (err: unknown) {
-      setHealthError(err instanceof Error ? err.message : 'Failed to reach health endpoint');
-    } finally {
-      setHealthLoading(false);
+    } catch {
+      // Ignored for background ping
     }
   };
 
   useEffect(() => {
-    fetchHealth();
-  }, []);
+    if (showSystemInfo && !healthData) {
+      fetchHealth();
+    }
+  }, [showSystemInfo, healthData]);
 
   return (
     <div className="container">
-      {/* Brand Header */}
-      <header className="header">
-        <div className="logo-badge">
-          <span style={{ fontSize: '1.75rem' }}>🎨</span>
-          <h1 className="logo-title">skribbl.io</h1>
-        </div>
-        <p className="tagline">Multiplayer Drawing & Guessing Game</p>
-      </header>
-
-      {/* Real-Time WebSocket Connection Indicator */}
-      <section className="card">
-        <div className="card-title">
-          <span>Real-Time WebSocket Gateway</span>
-          <div className={`status-pill ${isConnected ? 'connected' : 'disconnected'}`}>
-            <span className="status-dot"></span>
-            <span>{isConnected ? 'ONLINE / CONNECTED' : 'DISCONNECTED'}</span>
+      {/* Dynamic Screen Routing: Landing vs Lobby vs In-Game */}
+      {!roomState ? (
+        <Landing
+          socket={socket}
+          isConnected={isConnected}
+          initialRoomCode={initialRoomCode}
+          errorMessage={errorMessage}
+          onClearError={() => setErrorMessage(null)}
+        />
+      ) : roomState.status === 'lobby' ? (
+        <Lobby
+          socket={socket}
+          roomState={roomState}
+          myId={socketId || ''}
+          onLeaveRoom={handleLeaveRoom}
+        />
+      ) : (
+        /* In-game transition stub (Milestone 3 will implement canvas & gameplay) */
+        <div className="card game-started-card">
+          <div className="card-title">
+            <span>Game Started (Status: {roomState.status})</span>
           </div>
-        </div>
-
-        <p style={{ color: 'var(--color-text-muted)', marginBottom: '1rem', fontSize: '0.95rem' }}>
-          Real-time bi-directional connection between React 19 and the unified Express Socket.IO server.
-        </p>
-
-        <div className="info-grid">
-          <div className="info-item">
-            <div className="info-label">Socket ID</div>
-            <div className="info-value">{socketId || (isConnected ? 'Assigning...' : 'None')}</div>
-          </div>
-          <div className="info-item">
-            <div className="info-label">Transport Protocol</div>
-            <div className="info-value">{transport}</div>
-          </div>
-          <div className="info-item">
-            <div className="info-label">Connection Status</div>
-            <div className="info-value" style={{ color: isConnected ? '#34d399' : '#f87171' }}>
-              {isConnected ? 'Socket.IO Active' : (connectError ? `Error: ${connectError}` : 'Connecting...')}
+          <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
+            The round has begun. Turn rotation, word selection, and real-time canvas synchronization are scheduled for Milestone 3.
+          </p>
+          <div className="info-grid" style={{ marginBottom: '1.5rem' }}>
+            <div className="info-item">
+              <div className="info-label">Active Players</div>
+              <div className="info-value">{roomState.players.length}</div>
+            </div>
+            <div className="info-item">
+              <div className="info-label">Current Round</div>
+              <div className="info-value">1 / {roomState.settings.rounds}</div>
             </div>
           </div>
+          <button type="button" className="btn btn-secondary" onClick={handleLeaveRoom}>
+            Return to Lobby
+          </button>
         </div>
-      </section>
+      )}
 
-      {/* Authoritative Healthcheck & Production Endpoint */}
-      <section className="card">
-        <div className="card-title">
-          <span>Unified Server Health (GET /health)</span>
+      {/* Understated Diagnostic Footer */}
+      <footer className="footer-system">
+        <div className="footer-bar">
+          <div className="footer-status">
+            <span className={`status-dot ${isConnected ? 'online' : 'offline'}`}></span>
+            <span>{isConnected ? `Connected (${transport})` : 'Disconnected'}</span>
+          </div>
           <button
-            className="btn btn-secondary"
-            onClick={fetchHealth}
-            disabled={healthLoading}
-            style={{ fontSize: '0.85rem', padding: '0.4rem 0.85rem' }}
+            type="button"
+            className="footer-toggle-btn"
+            onClick={() => setShowSystemInfo(!showSystemInfo)}
           >
-            {healthLoading ? 'Checking...' : '🔄 Refresh Ping'}
+            {showSystemInfo ? 'Hide System Diagnostics' : 'System Diagnostics'}
           </button>
         </div>
 
-        <p style={{ color: 'var(--color-text-muted)', marginBottom: '0.75rem', fontSize: '0.95rem' }}>
-          Server-authoritative health check probe used for Render deployment and container liveness monitoring.
-        </p>
-
-        {healthError && (
-          <div style={{ color: 'var(--color-danger)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-            ⚠️ Healthcheck error: {healthError}
+        {showSystemInfo && (
+          <div className="card system-diagnostic-card">
+            <div className="card-title">
+              <span>Gateway and Server Status</span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={fetchHealth}
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="info-grid">
+              <div className="info-item">
+                <div className="info-label">Socket ID</div>
+                <div className="info-value">{socketId || 'None'}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Transport</div>
+                <div className="info-value">{transport}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Server Health</div>
+                <div className="info-value">{healthData?.status || 'Unknown'}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Server Uptime</div>
+                <div className="info-value">
+                  {healthData?.uptime ? `${Math.floor(healthData.uptime)}s` : 'Unknown'}
+                </div>
+              </div>
+            </div>
           </div>
         )}
-
-        {healthData && (
-          <div className="health-box">
-            <pre>{JSON.stringify(healthData, null, 2)}</pre>
-          </div>
-        )}
-      </section>
-
-      {/* Milestone 1 Status Overview */}
-      <section className="card">
-        <span className="milestone-badge">Milestone 1 Completed</span>
-        <h2 style={{ fontSize: '1.2rem', marginBottom: '0.75rem', fontFamily: 'var(--font-display)' }}>
-          Project Scaffolding & Unified Server
-        </h2>
-        <ul style={{ paddingLeft: '1.25rem', color: 'var(--color-text-muted)', lineHeight: '1.7', fontSize: '0.92rem' }}>
-          <li>
-            <strong style={{ color: 'var(--color-text)' }}>Story 1 (Monorepo Scaffold):</strong> Root, client, server, and shared package architecture with unified TypeScript configurations.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--color-text)' }}>Story 2 (Unified Server):</strong> Express 4+ serves the compiled Vite client bundle statically while Socket.IO handles WebSocket events on the shared port.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--color-text)' }}>Shared Contracts:</strong> Cleanly imported types (<code style={{ color: '#38bdf8' }}>@skribbl/shared</code>) without path resolution issues.
-          </li>
-          <li>
-            <strong style={{ color: 'var(--color-text)' }}>Ready for Milestone 2:</strong> Next up — Room Engine, Mandatory Public Matchmaking, and Lobby UI.
-          </li>
-        </ul>
-      </section>
+      </footer>
     </div>
   );
 };
