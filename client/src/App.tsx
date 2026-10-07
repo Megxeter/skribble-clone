@@ -7,6 +7,8 @@ import {
   ErrorPayload,
   LeaveRoomPayload,
   HealthResponse,
+  RoundStartPayload,
+  GameStatePayload,
 } from '@skribbl/shared';
 import { Landing } from './components/Landing';
 import { Lobby } from './components/Lobby';
@@ -22,6 +24,8 @@ export const App: React.FC = () => {
   const { socket, isConnected, socketId, transport } = useSocket();
 
   const [roomState, setRoomState] = useState<RoomStatePayload | null>(null);
+  const [roundStartData, setRoundStartData] = useState<RoundStartPayload | null>(null);
+  const [gameState, setGameState] = useState<GameStatePayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [initialRoomCode, setInitialRoomCode] = useState<string>('');
   const [showSystemInfo, setShowSystemInfo] = useState<boolean>(false);
@@ -72,6 +76,10 @@ export const App: React.FC = () => {
       if (!roomState || roomState.roomId !== state.roomId) {
         knownPlayerIdsRef.current = new Set(state.players.map((p) => p.id));
       }
+      if (state.status === 'lobby') {
+        setRoundStartData(null);
+        setGameState(null);
+      }
       setRoomState(state);
       setErrorMessage(null);
 
@@ -81,6 +89,14 @@ export const App: React.FC = () => {
         currentUrl.searchParams.set('room', state.code);
         window.history.replaceState({}, '', currentUrl.toString());
       }
+    };
+
+    const handleRoundStart = (payload: RoundStartPayload) => {
+      setRoundStartData(payload);
+    };
+
+    const handleGameState = (state: GameStatePayload) => {
+      setGameState(state);
     };
 
     const handlePlayerJoined = (payload: PlayerJoinedPayload) => {
@@ -103,11 +119,15 @@ export const App: React.FC = () => {
     };
 
     socket.on(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
+    socket.on(SOCKET_EVENTS.ROUND_START, handleRoundStart);
+    socket.on(SOCKET_EVENTS.GAME_STATE, handleGameState);
     socket.on(SOCKET_EVENTS.PLAYER_JOINED, handlePlayerJoined);
     socket.on(SOCKET_EVENTS.ERROR_MESSAGE, handleError);
 
     return () => {
       socket.off(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
+      socket.off(SOCKET_EVENTS.ROUND_START, handleRoundStart);
+      socket.off(SOCKET_EVENTS.GAME_STATE, handleGameState);
       socket.off(SOCKET_EVENTS.PLAYER_JOINED, handlePlayerJoined);
       socket.off(SOCKET_EVENTS.ERROR_MESSAGE, handleError);
     };
@@ -117,6 +137,8 @@ export const App: React.FC = () => {
   const handleLeaveRoom = useCallback(() => {
     knownPlayerIdsRef.current.clear();
     setJoinToast(null);
+    setRoundStartData(null);
+    setGameState(null);
     if (socket && roomState) {
       const payload: LeaveRoomPayload = { roomId: roomState.roomId };
       socket.emit(SOCKET_EVENTS.LEAVE_ROOM, payload);
@@ -184,6 +206,8 @@ export const App: React.FC = () => {
           myId={socketId || ''}
           roomState={roomState}
           onLeaveRoom={handleLeaveRoom}
+          initialRoundStartData={roundStartData}
+          initialGameState={gameState}
         />
       )}
 

@@ -17,20 +17,32 @@ export class WordService {
   }
 
   private loadWords(): void {
-    try {
-      const filePath = path.resolve(__dirname, '../data/words.json');
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      const parsed: string[] = JSON.parse(raw);
-      this.wordBank = parsed.map((w) => w.trim().toUpperCase());
-      console.log(`[WordService] Loaded ${this.wordBank.length} words into dictionary`);
-    } catch (err) {
-      console.warn('[WordService] Failed to load words.json, using fallback words:', err);
-      this.wordBank = [
-        'APPLE', 'BANANA', 'CASTLE', 'DOLPHIN', 'ELEPHANT',
-        'GUITAR', 'HOUSE', 'ISLAND', 'KITE', 'PENGUIN',
-        'ROCKET', 'SUNFLOWER', 'TURTLE', 'VOLCANO', 'ZEBRA'
-      ];
+    const candidatePaths = [
+      path.resolve(__dirname, '../data/words.json'),
+      path.resolve(__dirname, '../../src/data/words.json'),
+      path.resolve(process.cwd(), 'server/src/data/words.json'),
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf-8');
+          const parsed: string[] = JSON.parse(raw);
+          this.wordBank = parsed.map((w) => w.trim().toUpperCase());
+          console.log(`[WordService] Loaded ${this.wordBank.length} words into dictionary from ${p}`);
+          return;
+        } catch (err) {
+          console.warn(`[WordService] Failed to parse words.json at ${p}:`, err);
+        }
+      }
     }
+
+    console.warn('[WordService] words.json not found in candidate paths, using fallback list');
+    this.wordBank = [
+      'APPLE', 'BANANA', 'CASTLE', 'DOLPHIN', 'ELEPHANT',
+      'GUITAR', 'HOUSE', 'ISLAND', 'KITE', 'PENGUIN',
+      'ROCKET', 'SUNFLOWER', 'TURTLE', 'VOLCANO', 'ZEBRA'
+    ];
   }
 
   public getRandomWords(count: number = 3): string[] {

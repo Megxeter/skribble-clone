@@ -108,6 +108,7 @@ export interface GameStatePayload {
   wordLength: number;
   remainingTime: number;
   players: PlayerDTO[];
+  wordOptions?: string[]; // Strictly provided only to drawer during word_selecting phase
 }
 
 export interface RoundStartPayload {
@@ -192,3 +193,8 @@ export interface CorrectGuessPayload {
   playerName: string;
   pointsEarned: number;
 }
+
+export interface PlayAgainPayload {
+  roomId: string;
+}
+

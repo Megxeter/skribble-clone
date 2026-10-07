@@ -7,6 +7,7 @@ import { Server, Socket } from 'socket.io';
 import { HealthResponse } from '@skribbl/shared';
 import { registerRoomHandlers } from './handlers/roomHandler';
 import { registerDrawHandlers } from './handlers/drawHandler';
+import { registerChatHandlers } from './handlers/chatHandler';
 
 const app = express();
 const server = http.createServer(app);
@@ -27,9 +28,10 @@ const io = new Server(server, {
 io.on('connection', (socket: Socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
-  // Register Room, Matchmaking, and Drawing event handlers
+  // Register Room, Matchmaking, Drawing, and Chat event handlers
   registerRoomHandlers(io, socket);
   registerDrawHandlers(io, socket);
+  registerChatHandlers(io, socket);
 
   socket.on('disconnect', (reason: string) => {
     console.log(`[Socket.IO] Client disconnected: ${socket.id} (reason: ${reason})`);

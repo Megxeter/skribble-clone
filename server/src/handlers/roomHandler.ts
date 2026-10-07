@@ -233,7 +233,37 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
     }
   });
 
-  // 8. Explicit Leave Room
+  // 8. Play Again / Reset to Lobby (Host only)
+  socket.on(SOCKET_EVENTS.PLAY_AGAIN, (payload: { roomId: string }) => {
+    try {
+      const room = roomManager.getRoom(payload.roomId);
+      if (!room) return;
+      if (room.hostId !== socket.id) {
+        socket.emit(SOCKET_EVENTS.ERROR_MESSAGE, {
+          code: 'UNAUTHORIZED',
+          message: 'Only the host can reset the game to lobby.'
+        });
+        return;
+      }
+
+      if (room.game) {
+        room.game.clearAllTimers();
+        room.game = null;
+      }
+      room.status = 'lobby';
+      for (const p of room.players.values()) {
+        p.score = 0;
+        p.hasGuessed = false;
+        p.isDrawer = false;
+        p.isReady = p.isHost;
+      }
+      io.to(room.id).emit(SOCKET_EVENTS.ROOM_STATE, room.toDTO());
+    } catch (err: unknown) {
+      console.error(`[Socket ${socket.id}] play_again error:`, err);
+    }
+  });
+
+  // 9. Explicit Leave Room
   socket.on(SOCKET_EVENTS.LEAVE_ROOM, (_payload?: LeaveRoomPayload) => {
     handlePlayerExit(io, socket);
   });

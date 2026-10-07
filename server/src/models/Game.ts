@@ -8,11 +8,14 @@ import {
   TimerTickPayload,
   HintRevealedPayload,
   DrawSyncPayload,
+  ChatMessagePayload,
+  CorrectGuessPayload,
   PlayerDTO
 } from '@skribbl/shared';
 import { Room } from './Room';
 import { DrawingState } from './DrawingState';
 import { WordService } from '../services/WordService';
+import { levenshteinDistance } from '../utils/levenshtein';
 
 export class Game {
   public room: Room;
@@ -97,6 +100,7 @@ export class Game {
     this.hint1Sent = false;
     this.hint2Sent = false;
     this.secretWord = '';
+    this.remainingTime = 15;
 
     // Mark drawer in player DTOs
     for (const p of this.room.players.values()) {
@@ -110,6 +114,13 @@ export class Game {
 
     console.log(`[Game ${this.room.code}] Word selecting: Drawer is ${drawerPlayer.name} (${drawerId})`);
 
+    // 1. Emit ROOM_STATE first so clients switch to in-game screen
+    this.io.to(this.room.id).emit(SOCKET_EVENTS.ROOM_STATE, this.room.toDTO());
+
+    // 2. Broadcast GAME_STATE (drawer receives wordOptions strictly; guessers do not)
+    this.broadcastGameState();
+
+    // 3. Emit ROUND_START
     // CRITICAL: Send word choices strictly to drawer socket
     const drawerSocket = this.io.sockets.sockets.get(drawerPlayer.socketId);
     if (drawerSocket) {
@@ -132,17 +143,21 @@ export class Game {
     };
     drawerSocket?.to(this.room.id).emit(SOCKET_EVENTS.ROUND_START, guesserPayload);
 
-    this.broadcastGameState();
-    this.io.to(this.room.id).emit(SOCKET_EVENTS.ROOM_STATE, this.room.toDTO());
+    // 4. Authoritative 15-second selection countdown ticker
+    this.timer = setInterval(() => {
+      this.remainingTime--;
+      const tickPayload: TimerTickPayload = { remainingTime: this.remainingTime };
+      this.io.to(this.room.id).emit(SOCKET_EVENTS.TIMER_TICK, tickPayload);
 
-    // 15-second selection window with auto-pick fallback
-    this.wordSelectionTimer = setTimeout(() => {
-      if (this.room.status === 'word_selecting') {
-        const autoWord = this.currentWordOptions[0] || 'APPLE';
-        console.log(`[Game ${this.room.code}] 15s timeout: Auto-picked "${autoWord}" for ${drawerPlayer.name}`);
-        this.chooseWord(drawerId, autoWord);
+      if (this.remainingTime <= 0) {
+        this.clearAllTimers();
+        if (this.room.status === 'word_selecting') {
+          const autoWord = this.currentWordOptions[0] || 'APPLE';
+          console.log(`[Game ${this.room.code}] 15s timeout: Auto-picked "${autoWord}" for ${drawerPlayer.name}`);
+          this.chooseWord(drawerId, autoWord);
+        }
       }
-    }, 15000);
+    }, 1000);
   }
 
   public chooseWord(playerId: string, word: string): { success: boolean; error?: string } {
@@ -158,10 +173,7 @@ export class Game {
       return { success: false, error: 'Selected word is not among the offered choices.' };
     }
 
-    if (this.wordSelectionTimer) {
-      clearTimeout(this.wordSelectionTimer);
-      this.wordSelectionTimer = null;
-    }
+    this.clearAllTimers();
 
     this.secretWord = normalizedWord;
     console.log(`[Game ${this.room.code}] Drawer selected secret word.`);
@@ -236,6 +248,156 @@ export class Game {
       }
       console.log(`[Game ${this.room.code}] Hint revealed at index ${hintIndex} ("${letter}"): ${maskedWord}`);
     }
+  }
+
+  public handleChatMessage(senderId: string, text: string): void {
+    const sender = this.room.players.get(senderId);
+    if (!sender) return;
+
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    // 1. Not in drawing phase: normal room chat
+    if (this.room.status !== 'drawing') {
+      const chatPayload: ChatMessagePayload = {
+        senderId: sender.id,
+        senderName: sender.name,
+        text: cleanText,
+        type: 'chat',
+      };
+      this.io.to(this.room.id).emit(SOCKET_EVENTS.CHAT_MESSAGE, chatPayload);
+      return;
+    }
+
+    // 2. Active drawer cannot chat or guess while drawing
+    if (senderId === this.activeDrawerId) {
+      const drawerSocket = this.io.sockets.sockets.get(sender.socketId);
+      drawerSocket?.emit(SOCKET_EVENTS.ERROR_MESSAGE, {
+        code: 'DRAWER_CANNOT_GUESS',
+        message: 'Drawers cannot chat or guess while drawing.',
+      });
+      return;
+    }
+
+    // 3. Player already guessed: route message only to drawer and fellow guessers (Anti-Spoiler)
+    if (this.guessedPlayerIds.has(senderId)) {
+      const chatPayload: ChatMessagePayload = {
+        senderId: sender.id,
+        senderName: sender.name,
+        text: cleanText,
+        type: 'chat',
+      };
+      for (const p of this.room.players.values()) {
+        if (p.id === this.activeDrawerId || this.guessedPlayerIds.has(p.id)) {
+          const sock = this.io.sockets.sockets.get(p.socketId);
+          sock?.emit(SOCKET_EVENTS.CHAT_MESSAGE, chatPayload);
+        }
+      }
+      return;
+    }
+
+    // 4. Eligible guesser submission: validate against secret word
+    const normalizedGuess = cleanText.toLowerCase();
+    const normalizedSecret = this.secretWord.toLowerCase();
+
+    if (normalizedGuess === normalizedSecret) {
+      // Reject expired guesses
+      if (this.remainingTime <= 0) {
+        return;
+      }
+
+      // EXACT GUESS! Time-based scoring:
+      // ratio = remainingTime / turnDuration
+      // guesser = 100 + floor(400 * ratio)
+      // drawer = 25 + floor(100 * ratio)
+      // Award once per eligible correct guess; reject expired guesses.
+      const turnDuration = this.room.settings.drawTime || 80;
+      const ratio = Math.max(0, Math.min(1, this.remainingTime / turnDuration));
+      const guesserPoints = 100 + Math.floor(400 * ratio);
+      const drawerPoints = 25 + Math.floor(100 * ratio);
+
+      sender.score += guesserPoints;
+      sender.hasGuessed = true;
+      this.guessedPlayerIds.add(senderId);
+      this.roundPoints[senderId] = guesserPoints;
+
+      // Award drawer points once per eligible correct guess
+      if (this.activeDrawerId) {
+        const drawerPlayer = this.room.players.get(this.activeDrawerId);
+        if (drawerPlayer) {
+          drawerPlayer.score += drawerPoints;
+          this.roundPoints[this.activeDrawerId] = (this.roundPoints[this.activeDrawerId] || 0) + drawerPoints;
+        }
+      }
+
+      console.log(`[Game ${this.room.code}] ${sender.name} guessed correctly! Guesser: +${guesserPoints} pts, Drawer: +${drawerPoints} pts (Ratio: ${ratio.toFixed(2)}, Time: ${this.remainingTime}s)`);
+
+      // Broadcast correct_guess event
+      const correctGuessPayload: CorrectGuessPayload = {
+        playerId: sender.id,
+        playerName: sender.name,
+        pointsEarned: guesserPoints,
+      };
+      this.io.to(this.room.id).emit(SOCKET_EVENTS.CORRECT_GUESS, correctGuessPayload);
+
+      const senderSocket = this.io.sockets.sockets.get(sender.socketId);
+
+      // Public system announcement to other room members (ANTI-SPOILER: secret word is NEVER printed)
+      const announcementPayload: ChatMessagePayload = {
+        senderId: 'system',
+        senderName: 'System',
+        text: `${sender.name} guessed the word!`,
+        type: 'system',
+      };
+      if (senderSocket) {
+        senderSocket.to(this.room.id).emit(SOCKET_EVENTS.CHAT_MESSAGE, announcementPayload);
+      } else {
+        this.io.to(this.room.id).emit(SOCKET_EVENTS.CHAT_MESSAGE, announcementPayload);
+      }
+
+      // Private confirmation to successful guesser
+      senderSocket?.emit(SOCKET_EVENTS.CHAT_MESSAGE, {
+        senderId: 'system',
+        senderName: 'System',
+        text: `You guessed the word! (+${guesserPoints} points)`,
+        type: 'system',
+      });
+
+      // Update room & game state live for scoreboard
+      this.broadcastGameState();
+      this.io.to(this.room.id).emit(SOCKET_EVENTS.ROOM_STATE, this.room.toDTO());
+
+      // If all eligible guessers succeeded, conclude turn early
+      const nonDrawerCount = this.room.players.size - 1;
+      if (this.guessedPlayerIds.size >= nonDrawerCount) {
+        console.log(`[Game ${this.room.code}] All guessers deduced the word. Ending turn early.`);
+        this.endTurn('ALL_GUESSED');
+      }
+      return;
+    }
+
+    // 5. Near-miss feedback ("You're close!")
+    if (
+      normalizedSecret.length >= 4 &&
+      levenshteinDistance(normalizedGuess, normalizedSecret) <= 2
+    ) {
+      const senderSocket = this.io.sockets.sockets.get(sender.socketId);
+      senderSocket?.emit(SOCKET_EVENTS.CHAT_MESSAGE, {
+        senderId: 'system',
+        senderName: 'System',
+        text: `'${cleanText}' is very close!`,
+        type: 'close',
+      });
+    }
+
+    // 6. Broadcast incorrect guess as normal chat to the room
+    const chatPayload: ChatMessagePayload = {
+      senderId: sender.id,
+      senderName: sender.name,
+      text: cleanText,
+      type: 'chat',
+    };
+    this.io.to(this.room.id).emit(SOCKET_EVENTS.CHAT_MESSAGE, chatPayload);
   }
 
   public endTurn(reason: 'TIME_UP' | 'ALL_GUESSED' | 'DRAWER_DISCONNECTED'): void {
@@ -333,6 +495,7 @@ export class Game {
         wordLength: this.secretWord.length,
         remainingTime: this.remainingTime,
         players: Array.from(this.room.players.values()).map((p) => p.toDTO()),
+        wordOptions: isDrawer && this.room.status === 'word_selecting' ? this.currentWordOptions : undefined,
       };
 
       socket.emit(SOCKET_EVENTS.GAME_STATE, payload);

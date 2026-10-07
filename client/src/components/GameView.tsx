@@ -8,17 +8,21 @@ import {
   RoundEndPayload,
   GameOverPayload,
   TimerTickPayload,
-  HintRevealedPayload
+  HintRevealedPayload,
+  PlayAgainPayload
 } from '@skribbl/shared';
 import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
 import { WordSelectModal } from './WordSelectModal';
+import { Chat } from './Chat';
 
 interface GameViewProps {
   socket: Socket | null;
   myId: string;
   roomState: RoomStatePayload;
   onLeaveRoom: () => void;
+  initialRoundStartData?: RoundStartPayload | null;
+  initialGameState?: GameStatePayload | null;
 }
 
 export const GameView: React.FC<GameViewProps> = ({
@@ -26,20 +30,49 @@ export const GameView: React.FC<GameViewProps> = ({
   myId,
   roomState,
   onLeaveRoom,
+  initialRoundStartData,
+  initialGameState,
 }) => {
-  const [gameState, setGameState] = useState<GameStatePayload | null>(null);
-  const [roundStartData, setRoundStartData] = useState<RoundStartPayload | null>(null);
+  const [gameState, setGameState] = useState<GameStatePayload | null>(initialGameState || null);
+  const [roundStartData, setRoundStartData] = useState<RoundStartPayload | null>(initialRoundStartData || null);
   const [roundEndData, setRoundEndData] = useState<RoundEndPayload | null>(null);
   const [gameOverData, setGameOverData] = useState<GameOverPayload | null>(null);
-  const [remainingTime, setRemainingTime] = useState<number>(roomState.settings.drawTime);
+  const [remainingTime, setRemainingTime] = useState<number>(
+    initialGameState?.remainingTime || (roomState.status === 'word_selecting' ? 15 : roomState.settings.drawTime)
+  );
 
   const [currentColor, setCurrentColor] = useState<string>('#000000');
   const [currentSize, setCurrentSize] = useState<number>(4);
   const [isEraser, setIsEraser] = useState<boolean>(false);
 
-  // Active drawer determination
-  const isDrawer = (gameState?.drawerId || roundStartData?.drawerId) === myId;
-  const currentDrawerName = gameState?.drawerName || roundStartData?.drawerName || 'Player';
+  const isHost = roomState.hostId === myId;
+  const isDrawer =
+    (gameState?.drawerId ||
+      roundStartData?.drawerId ||
+      roomState.players.find((p) => p.isDrawer)?.id) === myId;
+  const currentDrawerName =
+    gameState?.drawerName ||
+    roundStartData?.drawerName ||
+    roomState.players.find((p) => p.isDrawer)?.name ||
+    'Player';
+
+  const myPlayer = (gameState?.players || roomState.players).find((p) => p.id === myId);
+  const hasGuessed = myPlayer?.hasGuessed ?? false;
+
+  useEffect(() => {
+    if (initialRoundStartData) {
+      setRoundStartData(initialRoundStartData);
+    }
+  }, [initialRoundStartData]);
+
+  useEffect(() => {
+    if (initialGameState) {
+      setGameState(initialGameState);
+      if (initialGameState.remainingTime !== undefined) {
+        setRemainingTime(initialGameState.remainingTime);
+      }
+    }
+  }, [initialGameState]);
 
   useEffect(() => {
     if (!socket) return;
@@ -92,6 +125,15 @@ export const GameView: React.FC<GameViewProps> = ({
     };
   }, [socket]);
 
+  const handlePlayAgain = () => {
+    if (!socket || !isHost) return;
+    const payload: PlayAgainPayload = { roomId: roomState.roomId };
+    socket.emit(SOCKET_EVENTS.PLAY_AGAIN, payload);
+  };
+
+  // Sort players descending by score for live leaderboard
+  const sortedPlayers = [...(gameState?.players || roomState.players)].sort((a, b) => b.score - a.score);
+
   return (
     <div className="game-view-container">
       {/* Game Header Bar */}
@@ -141,28 +183,35 @@ export const GameView: React.FC<GameViewProps> = ({
         </div>
       </div>
 
-      {/* Main Game Grid: Players + Canvas + Tools */}
+      {/* Main Game Grid: 1. Scoreboard | 2. Canvas & Tools | 3. Chat & Guesses */}
       <div className="game-main-grid">
-        {/* Left: Player Roster & Scores */}
+        {/* Left: Player Roster & Live Scores */}
         <div className="card game-players-card">
           <div className="card-title">
-            <span>Scoreboard ({roomState.players.length})</span>
+            <span>Scoreboard ({sortedPlayers.length})</span>
           </div>
           <div className="game-player-list">
-            {(gameState?.players || roomState.players).map((player) => {
+            {sortedPlayers.map((player, idx) => {
               const isThisDrawer = player.id === (gameState?.drawerId || roundStartData?.drawerId);
               const isMe = player.id === myId;
               const initial = player.name ? player.name.charAt(0).toUpperCase() : 'P';
               return (
                 <div key={player.id} className={`game-player-row ${isMe ? 'is-me' : ''} ${isThisDrawer ? 'is-drawer' : ''}`}>
+                  <div className="game-player-rank">#{idx + 1}</div>
                   <div className="game-player-avatar">{initial}</div>
                   <div className="game-player-details">
                     <span className="game-player-name">
                       {player.name} {isMe && <span className="you-tag">(You)</span>}
                     </span>
-                    <span className="game-player-role">
-                      {isThisDrawer ? 'Drawing now' : 'Guessing'}
-                    </span>
+                    <div className="game-player-badges">
+                      {isThisDrawer ? (
+                        <span className="status-chip chip-host">Drawing</span>
+                      ) : player.hasGuessed ? (
+                        <span className="status-chip chip-ready">Guessed</span>
+                      ) : (
+                        <span className="status-chip chip-waiting">Guessing</span>
+                      )}
+                    </div>
                   </div>
                   <div className="game-player-score">{player.score} pts</div>
                 </div>
@@ -174,6 +223,11 @@ export const GameView: React.FC<GameViewProps> = ({
         {/* Center: Canvas & Drawer Toolbar */}
         <div className="game-canvas-area">
           <div className="card canvas-card">
+            {roomState.status === 'drawing' && (
+              <div className="canvas-drawer-status" id="canvas-drawer-status">
+                {currentDrawerName} is drawing
+              </div>
+            )}
             <Canvas
               socket={socket}
               isDrawer={isDrawer && roomState.status === 'drawing'}
@@ -194,17 +248,66 @@ export const GameView: React.FC<GameViewProps> = ({
                 onToggleEraser={setIsEraser}
               />
             )}
+
+            {/* Round Intermission Banner */}
+            {roomState.status === 'round_end' && roundEndData && (
+              <div className="intermission-scores-panel">
+                <span className="intermission-title">Turn Complete - Points Awarded:</span>
+                <div className="intermission-points-grid">
+                  {Object.entries(roundEndData.roundPoints || {}).map(([pid, pts]) => {
+                    const p = roomState.players.find((pl) => pl.id === pid);
+                    return (
+                      <div key={pid} className="intermission-point-badge">
+                        <span className="point-player">{p?.name || 'Player'}:</span>
+                        <span className="point-value">+{pts} pts</span>
+                      </div>
+                    );
+                  })}
+                  {Object.keys(roundEndData.roundPoints || {}).length === 0 && (
+                    <span className="no-points-text">No points scored this turn.</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Right: Room-Scoped Chat & Guessing Feed */}
+        <div className="game-chat-area">
+          <Chat
+            socket={socket}
+            myId={myId}
+            hasGuessed={hasGuessed}
+            isDrawer={isDrawer && roomState.status === 'drawing'}
+          />
         </div>
       </div>
 
       {/* Word Selection Modal (Only shown to active drawer) */}
-      {roomState.status === 'word_selecting' && isDrawer && roundStartData?.wordOptions && (
+      {roomState.status === 'word_selecting' && isDrawer && (roundStartData?.wordOptions || gameState?.wordOptions) && (
         <WordSelectModal
           socket={socket}
-          wordOptions={roundStartData.wordOptions}
+          wordOptions={(roundStartData?.wordOptions || gameState?.wordOptions)!}
           remainingTime={remainingTime}
         />
+      )}
+
+      {/* Waiting screen for guessers during word selection */}
+      {roomState.status === 'word_selecting' && !isDrawer && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-content word-select-content waiting-content">
+            <div className="modal-header">
+              <h2 className="modal-title">Waiting for Word</h2>
+              <span className="selection-timer-badge">{remainingTime}s remaining</span>
+            </div>
+            <p className="word-select-desc">
+              <strong>{currentDrawerName}</strong> is choosing a word to draw...
+            </p>
+            <div className="waiting-spinner-area">
+              <span className="waiting-status-text">Get ready to guess!</span>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Game Over Leaderboard Dialog */}
@@ -214,9 +317,18 @@ export const GameView: React.FC<GameViewProps> = ({
             <div className="modal-header">
               <h2 className="modal-title">Game Over</h2>
             </div>
-            <p className="game-over-desc">
-              All {roomState.settings.rounds} rounds completed. Final rankings:
-            </p>
+            {gameOverData.leaderboard.length >= 2 &&
+            gameOverData.leaderboard[0].score > 0 &&
+            gameOverData.leaderboard[0].score === gameOverData.leaderboard[1].score ? (
+              <p className="game-over-desc">
+                Tie for 1st Place! Both players finished with {gameOverData.leaderboard[0].score} points.
+              </p>
+            ) : (
+              <p className="game-over-desc">
+                Winner: {gameOverData.winner?.name} with {gameOverData.winner?.score} points!
+              </p>
+            )}
+
             <div className="leaderboard-list">
               {gameOverData.leaderboard.map((player, idx) => (
                 <div key={player.id} className="leaderboard-row">
@@ -226,9 +338,15 @@ export const GameView: React.FC<GameViewProps> = ({
                 </div>
               ))}
             </div>
-            <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
-              <button type="button" className="btn btn-primary" onClick={onLeaveRoom}>
-                Return to Lobby
+
+            <div className="modal-actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem' }}>
+              {isHost && (
+                <button type="button" className="btn btn-primary" onClick={handlePlayAgain}>
+                  Play Again
+                </button>
+              )}
+              <button type="button" className="btn btn-secondary" onClick={onLeaveRoom}>
+                Leave Game
               </button>
             </div>
           </div>

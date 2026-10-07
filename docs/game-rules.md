@@ -19,11 +19,14 @@ When creating a room, the host can configure the following settings:
 Each round consists of alternating turns where every connected player draws once:
 
 1. **Word Selection Phase (15 Seconds):**
-   * Server picks 3 random words from the 300-word bank and sends them **only** to the active drawer.
-   * Drawer selects one word. If timeout expires, the server auto-selects a word.
-   * Guessers see: `"Player is choosing a word..."`.
+   * Server picks 3 random words from the 300-word bank and sends them **strictly** to the active drawer socket and drawer game state.
+   * Drawer selects one word via a modal overlay. If the 15-second selection countdown reaches 0, the server automatically selects Word #1.
+   * Guessers remain on a dedicated waiting screen: `"Waiting for Word: [Player] is choosing a word to draw..."` with an active selection countdown timer.
 2. **Drawing & Guessing Phase (e.g. 80 Seconds):**
+   * The drawing countdown starts only after a word is selected or auto-picked.
+   * Status banner above the canvas displays `"[Player] is drawing"`.
    * Canvas unlocks for the drawer with colors, brush sizes, eraser, undo, and clear tools.
+   * Drawer chat and guesses are strictly blocked in both UI and on the server (`DRAWER_CANNOT_GUESS`).
    * Guessers see masked blanks representing word length (e.g., `_ _ _ _ _`).
    * Authoritative server clock counts down by 1 second intervals.
    * At 50% elapsed time, letter hint 1 is revealed (e.g., `_ P _ _ _`).
@@ -37,28 +40,32 @@ Each round consists of alternating turns where every connected player draws once
    * Scoreboard updates with points earned during the turn.
    * Turn advances to the next player in the rotation.
 5. **Game Over & Podium:**
-   * After all configured rounds complete, the final leaderboard is computed and 1st, 2nd, and 3rd place winners are displayed on the podium.
+   * After all configured rounds complete, the final leaderboard is computed and 1st, 2nd, and 3rd place winners are displayed. The host can click **Play Again** to reset scores and return to the lobby.
 
 ---
 
-## 3. Authoritative Scoring Formulas
+## 3. Authoritative Time-Based Scoring Formulas
 
 All scores are calculated strictly on the server:
 
-### Guesser Points Formula
-Guesser points reward rapid guessing and scale with remaining time:
+$$\text{ratio} = \frac{t_{\text{remaining}}}{t_{\text{duration}}}$$
 
-$$\text{Guesser Points} = 100 + \left\lfloor \frac{\text{Remaining Time}}{\text{Total Draw Time}} \times 400 \right\rfloor + \text{First Guesser Bonus}$$
+### Guesser Points Formula
+$$\text{Guesser Points} = 100 + \lfloor 400 \times \text{ratio} \rfloor$$
 
 * **Base Points:** $100$
-* **Speed Bonus:** Up to $400$ points (proportional to time remaining).
-* **First Guesser Bonus:** $+50$ points awarded to the very first player who guesses correctly.
-* **Guesser Range:** $100$ to $550$ points.
+* **Speed Bonus:** Up to $400$ points based on the time ratio.
+* **Max Points:** $500$ points.
+* **Min Points:** $100$ points.
+* **Expired Guesses ($t_{\text{remaining}} \le 0$):** Rejected ($0$ points).
+* **Award Frequency:** Awarded once per eligible correct guess.
 
 ### Drawer Points Formula
-The drawer is rewarded for recognizable doodles based on how many players guessed the word:
+$$\text{Drawer Points} = 25 + \lfloor 100 \times \text{ratio} \rfloor$$
 
-$$\text{Drawer Points} = \text{Successful Guessers Count} \times 75$$
+* **Award Frequency:** Awarded in real time once per eligible correct guess.
+* **Max Points per Guesser:** $125$ points.
+* **Min Points per Guesser:** $25$ points.
 
 ---
 
@@ -68,5 +75,5 @@ $$\text{Drawer Points} = \text{Successful Guessers Count} \times 75$$
 * **Chat Shield:** When a guesser submits the exact word:
   * The message is suppressed from public chat.
   * A green system announcement is broadcast: *"Player guessed the word!"*.
-  * The guesser's chat input is disabled or isolated to prevent spoiling for remaining players.
-* **Close Guess Feedback:** If a guess is within a 1-character Levenshtein edit distance, the sender receives a private warning: *"'word' is close!"*.
+  * Post-guess messages are shielded from players who have not yet guessed.
+* **Close Guess Feedback:** If a guess is within a 2-character Levenshtein edit distance (for words $\ge 4$ characters), the sender receives a private notice: *"'word' is very close!"*.

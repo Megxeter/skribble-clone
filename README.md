@@ -20,16 +20,19 @@ The application features server-authoritative state management, 1-click public m
   * **Audio Cues & Sound Toggle:** Subtle, low-volume chime synthesized via native browser Web Audio API when another player joins, with an accessible Sound On/Off toggle and local preference memory.
 * **Real-Time Drawing Engine:**
   * **Normalized Coordinates:** Captures canvas strokes as relative floating-point ratios (`0.0`–`1.0`), guaranteeing distortion-free rendering across any screen resolution or mobile device.
+  * **Drawer Status Banner:** Clear `"[Player] is drawing"` indicator above the canvas for all participants.
   * **Drawer Toolkit:** 16 colors, 4 stroke sizes, eraser, undo last stroke, and wipe canvas.
-* **Word & Guessing System:**
+* **Word Selection & Guessing System:**
   * **Curated Word Bank:** Embedded ~300 common, easy-to-draw English nouns.
+  * **Robust Word Selection:** Dedicated modal for the drawer before each turn (including first turn and after Play Again) with redundant state recovery; guessers remain on a waiting screen with a synchronized 15-second countdown ticker. Drawing countdown begins strictly after word selection.
   * **Secret Word Secrecy:** Secret words are never transmitted to guessers over WebSockets. Guessers see only masked blanks (`_ _ _ _`).
-  * **Anti-Spoiler Chat Shield:** Correct guesses are suppressed from chat to prevent spoiling for other players, accompanied by a public celebration banner.
+  * **Drawer Chat & Guess Restriction:** Active drawer is strictly blocked from chatting and submitting guesses in both UI and server during drawing turns.
+  * **Anti-Spoiler Chat Shield:** Correct guesses are suppressed from chat to prevent spoiling for other players, accompanied by a green celebration announcement and shielded post-guess chat.
   * **Timed Letter Hints:** Automatic progressive letter reveals at 50% and 75% elapsed turn time.
-* **Authoritative Scoring:**
-  * **Speed-Scaled Points:** Guessers earn 100 to 550 points based on time remaining and first-guess bonus.
-  * **Drawer Rewards:** Drawer receives 75 points per successful guesser.
-  * **Live Leaderboard & Podium:** Real-time player rankings with end-of-game celebration.
+* **Authoritative Time-Based Scoring:**
+  * **Guesser Points:** $100 + \lfloor 400 \times \text{ratio} \rfloor$ where $\text{ratio} = t_{\text{remaining}} / t_{\text{duration}}$. Expired guesses ($t_{\text{remaining}} \le 0$) are rejected.
+  * **Drawer Points:** $25 + \lfloor 100 \times \text{ratio} \rfloor$ awarded in real time once per eligible correct guess.
+  * **Live Leaderboard & Podium:** Real-time player rankings with end-of-game celebration and host Play Again reset to lobby.
 
 ---
 
@@ -99,6 +102,12 @@ npm run test:m2
 
 # Milestone 3: Game loop, word selection secrecy, synchronized canvas, drawer-only authority, hints
 npm run test:m3
+
+# Milestone 4: Room chat, server guess validation, scoring, anti-spoiler shield, leaderboard, play again
+npm run test:m4
+
+# Word Selection Flow: Turn 1/later-turns choice modal, guesser waiting screen, selection countdown
+npm run test:flow
 ```
 
 ---

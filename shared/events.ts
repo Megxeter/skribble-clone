@@ -25,6 +25,7 @@ export const SOCKET_EVENTS = {
   HINT_REVEALED: 'hint_revealed',
   ROUND_END: 'round_end',
   GAME_OVER: 'game_over',
+  PLAY_AGAIN: 'play_again',
 
   // Canvas Drawing
   DRAW_START: 'draw_start',
