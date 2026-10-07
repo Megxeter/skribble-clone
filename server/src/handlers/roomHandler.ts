@@ -72,6 +72,12 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
         player: player.toDTO(),
         players: Array.from(room.players.values()).map((p) => p.toDTO())
       });
+
+      if (room.status === 'drawing' && room.game) {
+        socket.emit(SOCKET_EVENTS.DRAW_SYNC, {
+          strokes: room.game.drawingState.getStrokes()
+        });
+      }
     } catch (err: unknown) {
       console.error(`[Socket ${socket.id}] join_room error:`, err);
       socket.emit(SOCKET_EVENTS.ERROR_MESSAGE, {
@@ -103,6 +109,12 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
             player: player.toDTO(),
             players: Array.from(room.players.values()).map((p) => p.toDTO())
           });
+
+          if (room.status === 'drawing' && room.game) {
+            socket.emit(SOCKET_EVENTS.DRAW_SYNC, {
+              strokes: room.game.drawingState.getStrokes()
+            });
+          }
           return;
         }
       }

@@ -40,9 +40,9 @@ This document records the foundational architectural, product, and scope decisio
 
 ---
 
-### Decision 7: Deterministic Speed-Based Scoring Engine
-* **Decision:** Guesser points scale from 100 to 500 based on remaining draw time, plus a 50-point bonus for the first correct guesser. The drawer earns 75 points per successful guesser.
-* **Rationale:** Incentivizes fast guessing while rewarding drawers for creating recognizable art that multiple players can identify.
+### Decision 7: Authoritative Time-Based Ratio Scoring Engine
+* **Decision:** Points use time-based ratio scoring ($\text{ratio} = t_{\text{remaining}} / t_{\text{duration}}$). Guesser points are $100 + \lfloor 400 \times \text{ratio} \rfloor$ and drawer points are $25 + \lfloor 100 \times \text{ratio} \rfloor$ awarded once per eligible correct guess. Expired guesses ($t_{\text{remaining}} \le 0$) are rejected. Active drawer chat and guesses are blocked during drawing.
+* **Rationale:** Incentivizes fast guessing while rewarding drawers proportionally per player who correctly identifies the drawing, without leaking secrets or allowing drawer self-guessing.
 
 ---
 
@@ -52,13 +52,43 @@ This document records the foundational architectural, product, and scope decisio
 
 ---
 
-### Decision 9: Ponytail "Lazy Senior Developer" Framework Adoption
-* **Decision:** Implement using the Ponytail development principles: YAGNI, standard library and native platform priority, minimal code diffs, and root-cause fixes while rigorously preserving core server trust boundaries.
+### Decision 9: Minimalist, Native-First Architecture Principles
+* **Decision:** Implement using core minimalist software engineering principles: YAGNI, standard library and native platform priority, minimal code surface area, and root-cause fixes while rigorously preserving core server trust boundaries.
 * **Rationale:** Eliminates boilerplate and dependency bloat while maintaining strict server-side validation and security invariants.
 
 ---
 
 ### Decision 10: Professional, Understated UI Design System
 * **Decision:** Use an understated, professional dark interface featuring neutral surfaces (`#0f1115` / `#16181d`), a single subtle accent (`#2563eb`), clean sans-serif typography (`Inter`), accessible contrast, and visible keyboard focus (`:focus-visible`). Remove all emojis, flashy gradients, neon highlights, and decorative clutter.
-* **Rationale:** Focuses user attention on gameplay, improves accessibility and visual hierarchy, and aligns with Ponytail's minimal, uncluttered design philosophy.
+* **Rationale:** Focuses user attention on gameplay, improves accessibility and visual hierarchy, and creates a clean, uncluttered user experience.
+
+---
+
+### Decision 11: Web Audio Join Cue & Autoplay Policy Compliance
+* **Decision:** Synthesize short, low-volume audio cues using native browser Web Audio API (`AudioContext`) rather than fetching external sound assets. Play audio strictly once per actual player join event, suppress audio on room updates and reconnects, provide an accessible local toggle (`Sound: On / Off` in `localStorage`), and respect browser autoplay policies via passive user-gesture unlocking.
+* **Rationale:** Zero external dependencies or network asset latency by prioritizing native platform features over external packages, immediate playback readiness, robust accessibility, and zero crashes from browser autoplay restrictions.
+
+---
+
+### Decision 12: Resilient Word Selection Flow & Lifecycle Decoupling
+* **Decision:** Decouple `round_start` and `game_state` socket reception from child component mount lifecycle by maintaining persistent listeners in root `App.tsx`. Redundantly deliver word choices strictly to the active drawer via `GameStatePayload.wordOptions` during `word_selecting` (with `undefined` to guessers). Keep guessers on a waiting screen with live selection timer, and start drawing phase countdown only after word selection or 15-second auto-pick timeout.
+* **Rationale:** Completely eliminates race conditions between socket event delivery and React component mounting, guarantees drawer always sees choices even on initial turn or after Play Again, and preserves secret-word confidentiality.
+
+---
+
+### Decision 13: Room-Scoped Duplicate Name Numbering & Stability
+* **Decision:** Assign display names on the server. Unique names display normally. When names match after trimming and case-insensitive comparison, display them with suffixes (`Alice 1`, `Alice 2`, `Alice 3`) assigned in join order. Assigned numbers remain strictly stable when players leave (never renumber remaining players). Disambiguate names when someone enters a name already containing a number so that no two active players in a room share a display name. Propagate the assigned display name consistently across lobby, drawer label, chat messages, system notifications, scores, and leaderboards, while continuing to use unique socket IDs for permissions and scoring.
+* **Rationale:** Eliminates player confusion in multiplayer rooms while preserving unique player identities across all game modes without requiring complex account databases.
+
+---
+
+### Decision 14: Canvas Fill / Paint Bucket Tool & Server-Enforced Drawing Authority
+* **Decision:** Provide a Fill / Paint Bucket tool in the drawer toolbar alongside Brush and Eraser modes.
+  1. **Flood Fill Algorithm:** Uses a high-performance, non-recursive 4-way scan/stack flood fill on the 2D canvas `ImageData` using packed 32-bit integers to prevent stack overflows and eliminate external dependencies.
+  2. **Outline Preservation:** Applies a color tolerance threshold (32) so closed shape outlines and anti-aliased stroke borders are preserved without bleed-through or white halo artifacts.
+  3. **Open Area Handling:** Unclosed shapes and open canvas areas flood to canvas boundaries correctly while preserving existing strokes. Duplicate fills on matching colors are safely short-circuited as no-ops.
+  4. **Multiplayer Sync & Server Authority:** Emits `draw_fill` with normalized float coordinates ($0.0 \le x, y \le 1.0$) and target hex color. The server validates that only the active drawer during the `drawing` phase can emit `draw_fill`, returning `NOT_DRAWER` error to unauthorized clients.
+  5. **Undo History Integration:** Fills are recorded as first-class actions in `DrawingState` history. Emitting `draw_undo` pops the most recent action (stroke or fill) and broadcasts `draw_sync`, deterministically replaying canvas actions in order for all clients.
+* **Rationale:** Standard Pictionary drawing experience requirement, fully consistent with existing design tokens, authoritative server validation, and normalized cross-device rendering.
+
 

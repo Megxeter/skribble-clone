@@ -4,16 +4,19 @@ import {
   SOCKET_EVENTS,
   DrawStartPayload,
   DrawMovePayload,
+  DrawFillPayload,
   DrawSyncPayload,
   Stroke
 } from '@skribbl/shared';
 import { getNormalizedCoordinates, getCanvasCoordinates } from '../utils/coordinates';
+import { floodFill } from '../utils/floodFill';
 
 interface CanvasProps {
   socket: Socket | null;
   isDrawer: boolean;
   currentColor: string;
   currentSize: number;
+  activeTool?: 'brush' | 'fill' | 'eraser';
   disabled?: boolean;
 }
 
@@ -25,6 +28,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   isDrawer,
   currentColor,
   currentSize,
+  activeTool = 'brush',
   disabled = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -33,28 +37,41 @@ export const Canvas: React.FC<CanvasProps> = ({
   const remoteLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const remoteStrokeStyleRef = useRef<{ color: string; size: number }>({ color: '#000000', size: 4 });
 
-  // Clear canvas utility
+  // Clear canvas utility (pure white background)
   const clearLocalCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }, []);
 
-  // Render a full stroke array
+  // Initialize canvas on mount
+  useEffect(() => {
+    clearLocalCanvas();
+  }, [clearLocalCanvas]);
+
+  // Render a full stroke and fill array
   const renderStrokes = useCallback((strokes: Stroke[]) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     for (const stroke of strokes) {
-      if (stroke.points.length === 0) continue;
+      if (stroke.type === 'fill' && stroke.x !== undefined && stroke.y !== undefined) {
+        const pt = getCanvasCoordinates({ x: stroke.x, y: stroke.y }, CANVAS_WIDTH, CANVAS_HEIGHT);
+        floodFill(ctx, pt.x, pt.y, stroke.color, CANVAS_WIDTH, CANVAS_HEIGHT);
+        continue;
+      }
+
+      if (!stroke.points || stroke.points.length === 0) continue;
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.size;
       ctx.beginPath();
@@ -114,6 +131,16 @@ export const Canvas: React.FC<CanvasProps> = ({
       remoteLastPointRef.current = null;
     };
 
+    const handleRemoteFill = (payload: DrawFillPayload) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const pt = getCanvasCoordinates({ x: payload.x, y: payload.y }, CANVAS_WIDTH, CANVAS_HEIGHT);
+      floodFill(ctx, pt.x, pt.y, payload.color, CANVAS_WIDTH, CANVAS_HEIGHT);
+    };
+
     const handleRemoteClear = () => {
       clearLocalCanvas();
     };
@@ -125,6 +152,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     socket.on(SOCKET_EVENTS.DRAW_START, handleRemoteDrawStart);
     socket.on(SOCKET_EVENTS.DRAW_MOVE, handleRemoteDrawMove);
     socket.on(SOCKET_EVENTS.DRAW_END, handleRemoteDrawEnd);
+    socket.on(SOCKET_EVENTS.DRAW_FILL, handleRemoteFill);
     socket.on(SOCKET_EVENTS.CANVAS_CLEAR, handleRemoteClear);
     socket.on(SOCKET_EVENTS.DRAW_SYNC, handleRemoteSync);
 
@@ -132,6 +160,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       socket.off(SOCKET_EVENTS.DRAW_START, handleRemoteDrawStart);
       socket.off(SOCKET_EVENTS.DRAW_MOVE, handleRemoteDrawMove);
       socket.off(SOCKET_EVENTS.DRAW_END, handleRemoteDrawEnd);
+      socket.off(SOCKET_EVENTS.DRAW_FILL, handleRemoteFill);
       socket.off(SOCKET_EVENTS.CANVAS_CLEAR, handleRemoteClear);
       socket.off(SOCKET_EVENTS.DRAW_SYNC, handleRemoteSync);
     };
@@ -144,6 +173,21 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    if (activeTool === 'fill') {
+      const norm = getNormalizedCoordinates({ clientX, clientY } as MouseEvent, canvas);
+      const canvasPt = getCanvasCoordinates(norm, CANVAS_WIDTH, CANVAS_HEIGHT);
+      const filled = floodFill(ctx, canvasPt.x, canvasPt.y, currentColor, CANVAS_WIDTH, CANVAS_HEIGHT);
+      if (filled && socket) {
+        const payload: DrawFillPayload = {
+          x: norm.x,
+          y: norm.y,
+          color: currentColor,
+        };
+        socket.emit(SOCKET_EVENTS.DRAW_FILL, payload);
+      }
+      return;
+    }
 
     isDrawingRef.current = true;
     const norm = getNormalizedCoordinates({ clientX, clientY } as MouseEvent, canvas);
@@ -210,7 +254,13 @@ export const Canvas: React.FC<CanvasProps> = ({
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        className={`drawing-canvas ${isDrawer && !disabled ? 'cursor-draw' : 'cursor-disabled'}`}
+        className={`drawing-canvas ${
+          !isDrawer || disabled
+            ? 'cursor-disabled'
+            : activeTool === 'fill'
+            ? 'cursor-fill'
+            : 'cursor-draw'
+        }`}
         onMouseDown={(e) => startDrawing(e.clientX, e.clientY)}
         onMouseMove={(e) => drawMove(e.clientX, e.clientY)}
         onMouseUp={endDrawing}

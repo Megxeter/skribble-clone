@@ -2,14 +2,18 @@ import React from 'react';
 import { Socket } from 'socket.io-client';
 import { SOCKET_EVENTS } from '@skribbl/shared';
 
+export type ToolType = 'brush' | 'fill' | 'eraser';
+
 interface ToolbarProps {
   socket: Socket | null;
   currentColor: string;
   onSelectColor: (color: string) => void;
   currentSize: number;
   onSelectSize: (size: number) => void;
-  isEraser: boolean;
-  onToggleEraser: (isEraser: boolean) => void;
+  activeTool?: ToolType;
+  onSelectTool?: (tool: ToolType) => void;
+  isEraser?: boolean;
+  onToggleEraser?: (isEraser: boolean) => void;
   disabled?: boolean;
 }
 
@@ -33,10 +37,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onSelectColor,
   currentSize,
   onSelectSize,
-  isEraser,
+  activeTool: propActiveTool,
+  onSelectTool,
+  isEraser = false,
   onToggleEraser,
   disabled = false,
 }) => {
+  const currentTool: ToolType = propActiveTool || (isEraser ? 'eraser' : 'brush');
+
+  const handleSelectTool = (tool: ToolType) => {
+    if (disabled) return;
+    if (onSelectTool) {
+      onSelectTool(tool);
+    } else if (onToggleEraser) {
+      onToggleEraser(tool === 'eraser');
+    }
+  };
+
   const handleUndo = () => {
     if (!socket || disabled) return;
     socket.emit(SOCKET_EVENTS.DRAW_UNDO, {});
@@ -47,6 +64,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     socket.emit(SOCKET_EVENTS.CANVAS_CLEAR, {});
   };
 
+  const handleSelectColor = (col: string) => {
+    if (disabled) return;
+    if (currentTool === 'eraser') {
+      handleSelectTool('brush');
+    }
+    onSelectColor(col);
+  };
+
   return (
     <div className={`canvas-toolbar ${disabled ? 'toolbar-disabled' : ''}`}>
       {/* Palette Colors */}
@@ -54,17 +79,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <span className="toolbar-label">Color</span>
         <div className="color-palette-grid">
           {PALETTE_COLORS.map((col) => {
-            const isSelected = !isEraser && currentColor.toLowerCase() === col.toLowerCase();
+            const isSelected = currentTool !== 'eraser' && currentColor.toLowerCase() === col.toLowerCase();
             return (
               <button
                 key={col}
                 type="button"
                 className={`color-swatch ${isSelected ? 'selected' : ''}`}
                 style={{ backgroundColor: col }}
-                onClick={() => {
-                  onToggleEraser(false);
-                  onSelectColor(col);
-                }}
+                onClick={() => handleSelectColor(col)}
                 aria-label={`Select color ${col}`}
                 disabled={disabled}
               />
@@ -94,33 +116,59 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
-      {/* Action Tools: Eraser, Undo, Clear */}
+      {/* Action Tools: Brush, Fill, Eraser, Undo, Clear */}
       <div className="toolbar-section toolbar-actions-section">
         <span className="toolbar-label">Tools</span>
         <div className="tool-actions-group">
           <button
             type="button"
-            className={`btn btn-secondary btn-sm tool-btn ${isEraser ? 'active' : ''}`}
-            onClick={() => onToggleEraser(!isEraser)}
+            id="tool-brush"
+            className={`btn btn-secondary btn-sm tool-btn ${currentTool === 'brush' ? 'active' : ''}`}
+            onClick={() => handleSelectTool('brush')}
             disabled={disabled}
+            aria-label="Brush tool"
           >
-            {isEraser ? 'Brush Mode' : 'Eraser'}
+            Brush
           </button>
           <button
             type="button"
+            id="tool-fill"
+            className={`btn btn-secondary btn-sm tool-btn ${currentTool === 'fill' ? 'active' : ''}`}
+            onClick={() => handleSelectTool('fill')}
+            disabled={disabled}
+            aria-label="Fill / Paint Bucket tool"
+          >
+            Fill
+          </button>
+          <button
+            type="button"
+            id="tool-eraser"
+            className={`btn btn-secondary btn-sm tool-btn ${currentTool === 'eraser' ? 'active' : ''}`}
+            onClick={() => handleSelectTool('eraser')}
+            disabled={disabled}
+            aria-label="Eraser tool"
+          >
+            Eraser
+          </button>
+          <button
+            type="button"
+            id="tool-undo"
             className="btn btn-secondary btn-sm tool-btn"
             onClick={handleUndo}
             disabled={disabled}
+            aria-label="Undo"
           >
             Undo
           </button>
           <button
             type="button"
+            id="tool-clear"
             className="btn btn-secondary btn-sm tool-btn"
             onClick={handleClear}
             disabled={disabled}
+            aria-label="Clear canvas"
           >
-            Clear Canvas
+            Clear
           </button>
         </div>
       </div>

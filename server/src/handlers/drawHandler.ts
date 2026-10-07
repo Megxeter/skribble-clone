@@ -3,6 +3,7 @@ import {
   SOCKET_EVENTS,
   DrawStartPayload,
   DrawMovePayload,
+  DrawFillPayload,
   ErrorPayload
 } from '@skribbl/shared';
 import { RoomManager } from '../services/RoomManager';
@@ -67,7 +68,20 @@ export function registerDrawHandlers(io: Server, socket: Socket): void {
     socket.to(room.id).emit(SOCKET_EVENTS.DRAW_END, {});
   });
 
-  // 4. Draw Undo
+  // 4. Draw Fill
+  socket.on(SOCKET_EVENTS.DRAW_FILL, (payload: DrawFillPayload) => {
+    const { valid, room, game } = validateDrawer();
+    if (!valid || !room || !game) return;
+
+    const x = Math.max(0, Math.min(1, Number(payload.x) || 0));
+    const y = Math.max(0, Math.min(1, Number(payload.y) || 0));
+    const color = typeof payload.color === 'string' ? payload.color : '#000000';
+
+    game.drawingState.addFill(x, y, color);
+    socket.to(room.id).emit(SOCKET_EVENTS.DRAW_FILL, { x, y, color });
+  });
+
+  // 5. Draw Undo
   socket.on(SOCKET_EVENTS.DRAW_UNDO, () => {
     const { valid, room, game } = validateDrawer();
     if (!valid || !room || !game) return;
@@ -76,7 +90,7 @@ export function registerDrawHandlers(io: Server, socket: Socket): void {
     io.to(room.id).emit(SOCKET_EVENTS.DRAW_SYNC, { strokes });
   });
 
-  // 5. Canvas Clear
+  // 6. Canvas Clear
   socket.on(SOCKET_EVENTS.CANVAS_CLEAR, () => {
     const { valid, room, game } = validateDrawer();
     if (!valid || !room || !game) return;

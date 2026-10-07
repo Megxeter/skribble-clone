@@ -44,7 +44,19 @@ Each round consists of alternating turns where every connected player draws once
 
 ---
 
-## 3. Authoritative Time-Based Scoring Formulas
+## 3. Room-Scoped Duplicate Name Numbering
+
+* **Unique Names:** Display normally without numbers.
+* **Matching Names:** When names match after trimming and case-insensitive comparison, the server assigns suffixes in join order (`Alice 1`, `Alice 2`, `Alice 3`).
+* **Stability on Departures:** Assigned numbers remain strictly stable when players leave; remaining players are never renumbered.
+* **New Arrivals Post-Departure:** Players joining after departures receive the next join-order number (e.g., `Alice 4`).
+* **Disambiguation for Names with Numbers:** If a player enters a name that already contains a number or matches an active player's display name, the server disambiguates it so that no two active players in a room share a display name.
+* **Consistent Propagation:** The assigned display name is used across the lobby roster, drawer status banner above the canvas, chat feed, notifications, scores, and leaderboard.
+* **Authority:** Player IDs remain the sole authority for permissions and scoring. Display names are assigned strictly on the server.
+
+---
+
+## 4. Authoritative Time-Based Scoring Formulas
 
 All scores are calculated strictly on the server:
 
@@ -69,7 +81,7 @@ $$\text{Drawer Points} = 25 + \lfloor 100 \times \text{ratio} \rfloor$$
 
 ---
 
-## 4. Anti-Spoiler Chat Shield & Word Protection
+## 5. Anti-Spoiler Chat Shield & Word Protection
 
 * **Secret Word Secrecy:** The plaintext word is never sent in guesser WebSocket payloads. Network tab inspection in browser dev tools only reveals masked blanks.
 * **Chat Shield:** When a guesser submits the exact word:

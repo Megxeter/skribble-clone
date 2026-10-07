@@ -21,7 +21,9 @@
     "test:m3": "node scripts/verify-milestone3.mjs",
     "test:m4": "node scripts/verify-milestone4.mjs",
     "test:flow": "node scripts/verify-word-selection-flow.mjs",
-    "test:join": "node scripts/verify-join-notifications.mjs"
+    "test:join": "node scripts/verify-join-notifications.mjs",
+    "test:names": "node scripts/verify-duplicate-names.mjs",
+    "test:fill": "node scripts/verify-paint-bucket.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

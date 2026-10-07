@@ -31,6 +31,7 @@ export const SOCKET_EVENTS = {
   DRAW_START: 'draw_start',
   DRAW_MOVE: 'draw_move',
   DRAW_END: 'draw_end',
+  DRAW_FILL: 'draw_fill',
   DRAW_UNDO: 'draw_undo',
   CANVAS_CLEAR: 'canvas_clear',
   DRAW_SYNC: 'draw_sync',

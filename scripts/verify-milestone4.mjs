@@ -381,9 +381,9 @@ async function run() {
     // 10. Play Again (Host resets room to lobby with 0 scores)
     // ------------------------------------------------------------------------
     console.log('\n🔟 Testing Host Play Again & Score Reset to Lobby...');
-    const aliceResetP = waitForEvent(alice, 'room_state');
-    const bobResetP = waitForEvent(bob, 'room_state');
-    const charlieResetP = waitForEvent(charlie, 'room_state');
+    const aliceResetP = waitForEvent(alice, 'room_state', (s) => s.status === 'lobby');
+    const bobResetP = waitForEvent(bob, 'room_state', (s) => s.status === 'lobby');
+    const charlieResetP = waitForEvent(charlie, 'room_state', (s) => s.status === 'lobby');
 
     alice.emit('play_again', { roomId: roomACode });
 

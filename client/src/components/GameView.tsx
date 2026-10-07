@@ -43,7 +43,7 @@ export const GameView: React.FC<GameViewProps> = ({
 
   const [currentColor, setCurrentColor] = useState<string>('#000000');
   const [currentSize, setCurrentSize] = useState<number>(4);
-  const [isEraser, setIsEraser] = useState<boolean>(false);
+  const [activeTool, setActiveTool] = useState<'brush' | 'fill' | 'eraser'>('brush');
 
   const isHost = roomState.hostId === myId;
   const isDrawer =
@@ -231,8 +231,9 @@ export const GameView: React.FC<GameViewProps> = ({
             <Canvas
               socket={socket}
               isDrawer={isDrawer && roomState.status === 'drawing'}
-              currentColor={isEraser ? '#16181d' : currentColor}
+              currentColor={activeTool === 'eraser' ? '#ffffff' : currentColor}
               currentSize={currentSize}
+              activeTool={activeTool}
               disabled={!isDrawer || roomState.status !== 'drawing'}
             />
 
@@ -244,8 +245,8 @@ export const GameView: React.FC<GameViewProps> = ({
                 onSelectColor={setCurrentColor}
                 currentSize={currentSize}
                 onSelectSize={setCurrentSize}
-                isEraser={isEraser}
-                onToggleEraser={setIsEraser}
+                activeTool={activeTool}
+                onSelectTool={setActiveTool}
               />
             )}
 

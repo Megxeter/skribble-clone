@@ -7,12 +7,26 @@ export class DrawingState {
   public startStroke(x: number, y: number, color: string, size: number): Stroke {
     const point: StrokePoint = { x, y };
     this.currentStroke = {
+      type: 'stroke',
       points: [point],
       color,
       size
     };
     this.strokes.push(this.currentStroke);
     return this.currentStroke;
+  }
+
+  public addFill(x: number, y: number, color: string): Stroke {
+    const fillStroke: Stroke = {
+      type: 'fill',
+      x,
+      y,
+      color,
+      points: [],
+      size: 0
+    };
+    this.strokes.push(fillStroke);
+    return fillStroke;
   }
 
   public addPoint(x: number, y: number): void {

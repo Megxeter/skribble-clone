@@ -58,3 +58,10 @@ skribbl-clone/
 4. **Anti-Spoiler Chat Shield:** Guessed words are suppressed from chat. When a player guesses correctly, only a system announcement is shown, and subsequent messages from that player are hidden from players who have not yet guessed.
 5. **Strict 2-Player Minimum Start:** Games require at least 2 connected players to start. The server strictly rejects start requests if `players.size < 2`.
 6. **Ephemeral In-Memory State:** Rooms and player sessions live strictly in server memory (`RoomManager` Map) and are automatically pruned 30 seconds after becoming empty. Zero database required.
+
+---
+
+## 4. Related Architecture Specifications
+
+* [docs/hld.md](hld.md) — **High-Level Design (HLD)**: System overview, Socket.IO communication topology, room state lifecycle, and unified Render deployment structure.
+* [docs/lld.md](lld.md) — **Low-Level Design (LLD)**: Module breakdowns, data models (`Player`, `Room`, `Game`, `DrawingState`), WebSocket event payloads, authoritative timers, scoring formulas, and validation rules.

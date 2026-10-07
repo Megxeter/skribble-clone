@@ -1007,6 +1007,10 @@ body {
   cursor: crosshair;
 }
 
+.cursor-fill {
+  cursor: crosshair;
+}
+
 .cursor-disabled {
   cursor: default;
 }

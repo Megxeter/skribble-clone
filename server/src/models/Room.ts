@@ -13,6 +13,7 @@ export class Room {
   public createdAt: number = Date.now();
   public cleanupTimeout: NodeJS.Timeout | null = null;
   public game: Game | null = null;
+  private rawNameCounters: Map<string, number> = new Map();
 
   constructor(id: string, code: string, isPublic: boolean, host: Player, initialSettings?: Partial<RoomSettings>) {
     this.id = id;
@@ -125,7 +126,70 @@ export class Room {
     }
 
     this.players.set(player.id, player);
+    this.updatePlayerDisplayNames(player);
     return { success: true };
+  }
+
+  /**
+   * Room-scoped duplicate player name numbering.
+   * - Unique names display normally.
+   * - When names match after trimming and case-insensitive comparison, display them with suffixes: Alice 1, Alice 2, Alice 3.
+   * - Numbers assigned by join order and remain stable when players leave (no renumbering).
+   * - Display names are kept unambiguous even when entered names already contain numbers.
+   */
+  public updatePlayerDisplayNames(newPlayer: Player): void {
+    const rawKey = newPlayer.rawName.trim().toLowerCase();
+    const matching = Array.from(this.players.values())
+      .filter((p) => p.rawName.trim().toLowerCase() === rawKey)
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+
+    if (matching.length === 1) {
+      // Only one player has this rawName currently in the room
+      if (!this.isDisplayNameTaken(newPlayer.rawName, newPlayer.id)) {
+        // Name is completely unique across all active display names
+        newPlayer.name = newPlayer.rawName;
+        newPlayer.isSuffixed = false;
+        newPlayer.assignedNumber = null;
+      } else {
+        // Raw name is already in use by another active player's display name
+        // Disambiguate with suffix so no two players share the same display name
+        let n = 2;
+        while (this.isDisplayNameTaken(`${newPlayer.rawName} ${n}`, newPlayer.id)) {
+          n++;
+        }
+        newPlayer.assignedNumber = n;
+        newPlayer.isSuffixed = true;
+        newPlayer.name = `${newPlayer.rawName} ${n}`;
+        this.rawNameCounters.set(rawKey, Math.max(this.rawNameCounters.get(rawKey) || 0, n));
+      }
+    } else {
+      // Multiple active players have matching rawName
+      // Assign suffixes in join order without renumbering already suffixed players
+      for (const p of matching) {
+        if (!p.isSuffixed) {
+          const currentCounter = this.rawNameCounters.get(rawKey) || 0;
+          let n = Math.max(1, currentCounter + 1);
+          while (this.isDisplayNameTaken(`${p.rawName} ${n}`, p.id)) {
+            n++;
+          }
+          p.assignedNumber = n;
+          p.isSuffixed = true;
+          p.name = `${p.rawName} ${n}`;
+          this.rawNameCounters.set(rawKey, n);
+        }
+      }
+    }
+  }
+
+  public isDisplayNameTaken(candidateName: string, excludePlayerId?: string): boolean {
+    const candidateLower = candidateName.trim().toLowerCase();
+    for (const p of this.players.values()) {
+      if (excludePlayerId && p.id === excludePlayerId) continue;
+      if (p.name.trim().toLowerCase() === candidateLower) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public removePlayer(playerId: string): Player | null {

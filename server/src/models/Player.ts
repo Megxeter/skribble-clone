@@ -3,6 +3,7 @@ import { PlayerDTO } from '@skribbl/shared';
 export class Player {
   public id: string;
   public socketId: string;
+  public rawName: string;
   public name: string;
   public score: number = 0;
   public isHost: boolean = false;
@@ -10,11 +11,14 @@ export class Player {
   public isReady: boolean = false;
   public isDrawer: boolean = false;
   public joinedAt: number = Date.now();
+  public assignedNumber: number | null = null;
+  public isSuffixed: boolean = false;
 
   constructor(socketId: string, name: string, isHost: boolean = false) {
     this.id = socketId; // Use socketId as unique identifier for v1
     this.socketId = socketId;
-    this.name = Player.sanitizeName(name);
+    this.rawName = Player.sanitizeName(name);
+    this.name = this.rawName;
     this.isHost = isHost;
     this.isReady = isHost; // Host is always ready by default
   }

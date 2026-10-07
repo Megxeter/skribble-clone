@@ -92,7 +92,7 @@ export interface PlayerLeftPayload {
 }
 
 export interface ErrorPayload {
-  code: 'INSUFFICIENT_PLAYERS' | 'ROOM_FULL' | 'ROOM_NOT_FOUND' | 'GAME_IN_PROGRESS' | 'SERVER_ERROR' | 'UNAUTHORIZED' | 'INVALID_SETTINGS' | 'NOT_DRAWER' | 'INVALID_WORD';
+  code: 'INSUFFICIENT_PLAYERS' | 'ROOM_FULL' | 'ROOM_NOT_FOUND' | 'GAME_IN_PROGRESS' | 'SERVER_ERROR' | 'UNAUTHORIZED' | 'INVALID_SETTINGS' | 'NOT_DRAWER' | 'INVALID_WORD' | 'DRAWER_CANNOT_GUESS';
   message: string;
 }
 
@@ -161,6 +161,12 @@ export interface DrawMovePayload {
 
 export interface DrawEndPayload {}
 
+export interface DrawFillPayload {
+  x: number;      // 0.0 to 1.0 relative
+  y: number;      // 0.0 to 1.0 relative
+  color: string;
+}
+
 export interface DrawSyncPayload {
   strokes: Stroke[];
 }
@@ -171,9 +177,12 @@ export interface StrokePoint {
 }
 
 export interface Stroke {
+  type?: 'stroke' | 'fill';
   points: StrokePoint[];
   color: string;
   size: number;
+  x?: number;     // 0.0 to 1.0 relative (used for fill action)
+  y?: number;     // 0.0 to 1.0 relative (used for fill action)
 }
 
 // Chat Payloads
