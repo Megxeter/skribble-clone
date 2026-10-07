@@ -38,7 +38,8 @@ Real-time multiplayer drawing games present several engineering challenges:
 ### Solution
 The application solves these problems through:
 * **Server-Authoritative State Machine:** All timers, turn sequences, word selections, score math, and room states originate strictly on the Node.js server.
-* **Normalized Float Coordinates ($0.0 \dots 1.0$):** Canvas strokes are transmitted as relative ratios, guaranteeing pixel-perfect proportional rendering across all display resolutions.
+* **Normalized Float Coordinates ($0.0 \dots 1.0$):** Canvas strokes and flood fills are transmitted as relative ratios, guaranteeing pixel-perfect proportional rendering across all display resolutions.
+* **Drawer-Only Canvas Authority & Synchronized History:** Drawing actions (brush strokes, fills, undo, clear) are strictly validated on the server. Freehand strokes and flood fills share a unified action history replayed deterministically via `draw_sync`.
 * **Anti-Spoiler Chat Shield & Word Protection:** Plaintext secret words are never transmitted to guesser clients. Correct guesses are suppressed from public chat, replaced with system announcements, and subsequent messages from that player are shielded from players who have not yet deduced the word.
 * **Persistent Event Router:** Persistent Socket.IO listeners at the root application coordinator eliminate React lifecycle race conditions.
 * **Room-Scoped Duplicate Name Numbering:** Stable join-order suffix numbering (`Alice 1`, `Alice 2`, `Alice 3`) that remains permanent across player departures without renumbering.
@@ -59,17 +60,30 @@ The application solves these problems through:
   * **Hints:** 0 to 5 progressive letter reveals (default: 2; 0 disables hints).
 * **Strict 2-Player Minimum Gate:** Matches cannot start with fewer than 2 connected players. The server validates room capacity and rejects single-player starts with `INSUFFICIENT_PLAYERS`.
 * **Dynamic Host Migration:** If the room host disconnects, host authority transfers automatically to the next oldest connected player.
-* **Room-Scoped Duplicate Name Numbering:**
+* **Room-Scoped Duplicate Name Numbering & Disambiguation:**
   * Unique names display normally without numbers.
   * When nicknames match after trimming and case-insensitive comparison, suffixes are assigned in join order (`Alice 1`, `Alice 2`, `Alice 3`).
   * Assigned numbers remain strictly stable when players leave; remaining players are never renumbered. Subsequent arrivals receive the next sequential number (`Alice 4`).
-  * Inputs already containing numbers or colliding with active display names are disambiguated so that no two active players in a room share a display name.
-  * Display names are assigned strictly on the server and render identically across lobby rosters, drawer banners, chat, toasts, scores, and leaderboards.
+  * Inputs already containing numbers or colliding with active display names are disambiguated so that no two active players in a room share a display name (e.g., entering `Alice 4` when `Alice 4` is already active yields `Alice 4 2`).
+  * Display names are assigned strictly on the server and render identically across lobby rosters, drawer status banners, chat feeds, system notifications, scores, and leaderboards, while unique socket IDs remain the sole authority for permissions and scoring.
 
 ### Real-Time Drawing Canvas
-* **Normalized Coordinates:** All drawing coordinates $(x, y)$ are normalized to float ratios between $0.0$ and $1.0$ relative to canvas width and height.
+* **Normalized Coordinates ($0.0 \dots 1.0$):** All drawing and fill coordinates $(x, y)$ are normalized to float ratios between $0.0$ and $1.0$ relative to canvas width and height, guaranteeing pixel-perfect rendering across different viewport sizes and devices.
 * **Drawer Status Banner:** `"[Player] is drawing"` banner is displayed above the canvas for all participants.
-* **Drawer Toolkit:** 16 curated colors, 4 brush thicknesses (3px, 8px, 16px, 30px), eraser tool, undo previous stroke, and clear canvas. Tools are active exclusively for the designated drawer; guessers receive a view-only canvas.
+* **Drawer Toolkit:** 16 curated palette colors, 4 brush thicknesses (3px, 8px, 16px, 30px), Brush tool, Fill / Paint Bucket tool, Eraser tool, Undo action, and Clear Canvas. Tools and interactive cursor states are active exclusively for the designated drawer; guessers receive a read-only canvas with disabled toolbar controls.
+* **Fill / Paint Bucket Tool (Flood Fill):**
+  * **Algorithm:** High-performance, non-recursive 4-way stack flood fill operating directly on 2D canvas `ImageData` using packed 32-bit integers, preventing call stack overflow.
+  * **Outline Preservation:** Applies a color tolerance threshold (32) so closed shape outlines and anti-aliased stroke borders are preserved without bleed-through or white halo artifacts.
+  * **Open Area Handling:** Floods unclosed shapes and open canvas areas cleanly to canvas boundaries. Duplicate clicks on identical colors are safely short-circuited as no-ops.
+* **Drawer-Only Access & Server Authorization:**
+  * All canvas actions (`draw_start`, `draw_move`, `draw_end`, `draw_fill`, `draw_undo`, `canvas_clear`) are validated strictly on the server against `socket.id === game.activeDrawerId` during the `drawing` phase.
+  * Unauthorized attempts by non-drawers emit a `NOT_DRAWER` error (*"Only the active drawer can modify the canvas."*).
+* **Multiplayer Synchronization & Mid-Round Join Sync:**
+  * Real-time `draw_fill` broadcasts transmit normalized float coordinates and target hex color to all other clients in the room.
+  * Players who join or reconnect during an active drawing round immediately receive `draw_sync` with the complete sequence of strokes and fills, replayed in order to mirror current canvas state.
+* **Unified Undo History:**
+  * Freehand strokes and paint bucket fills are recorded as first-class actions in `DrawingState`.
+  * Emitting `draw_undo` pops the most recent action (brush stroke or fill) and broadcasts `draw_sync`, deterministically re-rendering the canvas across all room clients.
 
 ### Word Selection & Progressive Hints
 * **Curated Word Bank:** Embedded offline dictionary containing ~300 common, easy-to-draw English nouns.
@@ -145,7 +159,7 @@ The application runs as a cohesive client-server system organized around server-
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │ Socket.IO Gateway & Event Handlers                               │  │
 │  │  ├── roomHandler.ts (Matchmaking, Room Creation, Settings)       │  │
-│  │  ├── drawHandler.ts (Normalized Stroke Sync, Undo, Clear)        │  │
+│  │  ├── drawHandler.ts (Normalized Stroke & Fill Sync, Undo, Clear) │  │
 │  │  └── chatHandler.ts (Guess Evaluation, Anti-Spoiler Filtering)   │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │                                                                        │
@@ -162,7 +176,7 @@ The application runs as a cohesive client-server system organized around server-
 ### Communication Topology
 * **Room-Isolated Sockets:** Each active match maps to a Socket.IO room channel: `socket.join(room_${roomId})`. All gameplay events, chat messages, and canvas strokes broadcast strictly within that channel.
 * **Persistent Event Router:** Client socket listeners are initialized once at the root `App.tsx` level. This decouples event handling from individual component mount/unmount lifecycles, ensuring word selection payloads and game-over events are never dropped during screen transitions.
-* **Normalized Data Transport:** Drawing strokes are broadcast as float coordinates ($0.0 \dots 1.0$), ensuring viewers on any device scale them to their local canvas dimensions without coordinate drift.
+* **Normalized Data Transport:** Drawing strokes and flood fills are broadcast as float coordinates ($0.0 \dots 1.0$), ensuring viewers on any device scale them to their local canvas dimensions without coordinate drift.
 
 ### End-to-End Game Turn Flow
 ```mermaid
@@ -218,13 +232,13 @@ skribbl-clone/
 │       │   ├── Player.ts        # Player entity, rawName, assigned numbering
 │       │   ├── Room.ts          # Room entity, name disambiguation, settings sanitization
 │       │   ├── Game.ts          # Turn rotation, word selection, hints, clocks, scoring
-│       │   └── DrawingState.ts  # In-memory stroke buffer, undo, clear
+│       │   └── DrawingState.ts  # In-memory stroke & fill buffer, undo, clear
 │       ├── services/
 │       │   ├── RoomManager.ts   # In-memory room lookup and 30s cleanup timer
 │       │   └── WordService.ts   # 300-word bank, random selection logic
 │       ├── handlers/
-│       │   ├── roomHandler.ts   # Room creation, joining, ready toggles, game start
-│       │   ├── drawHandler.ts   # Normalized stroke broadcasts, undo, clear
+│       │   ├── roomHandler.ts   # Room creation, joining, ready toggles, game start, mid-round sync
+│       │   ├── drawHandler.ts   # Normalized stroke & fill broadcasts, undo, clear
 │       │   └── chatHandler.ts   # Guess evaluation, anti-spoiler shielding
 │       ├── data/
 │       │   └── words.json       # 300 curated English drawing words
@@ -237,14 +251,16 @@ skribbl-clone/
         │   ├── Landing.tsx      # Public matchmaking, create room, join private
         │   ├── Lobby.tsx        # Player roster, settings sliders, host start
         │   ├── GameView.tsx     # Game screen container & phase manager
-        │   ├── Canvas.tsx       # HTML5 canvas drawing engine
-        │   ├── Toolbar.tsx      # 16 colors, 4 sizes, eraser, undo, clear
+        │   ├── Canvas.tsx       # HTML5 canvas drawing engine & flood fill integration
+        │   ├── Toolbar.tsx      # 16 colors, 4 sizes, Brush, Fill bucket, Eraser, Undo, Clear
         │   ├── Chat.tsx         # Chat feed, guess input, anti-spoiler notices
         │   ├── WordSelection.tsx# Drawer choice modal (3 words) & guesser waiting screen
         │   └── Scoreboard.tsx   # Live rankings, round recap, podium celebration
         ├── hooks/
         │   └── useSocket.ts     # Socket.IO connection manager & transport state
         └── utils/
+            ├── coordinates.ts   # Normalized float coordinate scaling [0.0 - 1.0]
+            ├── floodFill.ts     # 4-way stack-based flood fill with outline preservation
             └── sound.ts         # Native Web Audio join chime & autoplay unlock
 ```
 
@@ -298,9 +314,25 @@ export class Game {
   public timer: NodeJS.Timeout | null;  // 1-second drawing timer
   public wordSelectionTimer: NodeJS.Timeout | null; // 15-second selection timer
   public intermissionTimer: NodeJS.Timeout | null;  // 5-second intermission timer
-  public drawingState: DrawingState;    // In-memory stroke buffer
+  public drawingState: DrawingState;    // In-memory stroke & fill buffer
   public guessedPlayerIds: Set<string>; // Players who guessed correctly this turn
   public roundPoints: Record<string, number>; // Points earned in active turn
+}
+```
+
+#### 4. DrawingState (`server/src/models/DrawingState.ts`)
+```typescript
+export class DrawingState {
+  private strokes: Stroke[] = [];         // Sequential history of freehand strokes and flood fills
+  private currentStroke: Stroke | null;   // Active freehand stroke in progress
+
+  public startStroke(x: number, y: number, color: string, size: number): Stroke;
+  public addPoint(x: number, y: number): void;
+  public endStroke(): void;
+  public addFill(x: number, y: number, color: string): Stroke;
+  public undo(): Stroke[];                // Pops the most recent action (stroke or fill)
+  public clear(): void;                   // Resets the canvas history
+  public getStrokes(): Stroke[];          // Returns immutable snapshot of canvas history
 }
 ```
 
@@ -340,7 +372,10 @@ $$\text{ratio} = \frac{t_{\text{remaining}}}{t_{\text{duration}}}$$
    * When trimmed, case-insensitive names match in a room, suffixes are assigned in join order (`Alice 1`, `Alice 2`, `Alice 3`).
    * Once suffixed, `isSuffixed = true` ensures numbers remain permanent when earlier players leave (no renumbering).
    * Copycat inputs matching an active display name are disambiguated with the next available suffix.
-4. **Drawing Authorization:** Packets (`draw_start`, `draw_move`, `draw_end`, `draw_undo`, `canvas_clear`) are validated against `socket.id === game.activeDrawerId`. Non-drawer drawing packets are rejected.
+4. **Drawing Authorization & History Integrity:**
+   * All canvas packets (`draw_start`, `draw_move`, `draw_end`, `draw_fill`, `draw_undo`, `canvas_clear`) are validated strictly on the server against `socket.id === game.activeDrawerId` during the `drawing` phase.
+   * Unauthorized attempts by non-drawers emit `NOT_DRAWER` error (*"Only the active drawer can modify the canvas."*).
+   * Fills and strokes are tracked in `DrawingState`; undo operations pop the latest action and broadcast `draw_sync` to all clients, and mid-round joining players receive `draw_sync` to reconstruct the canvas.
 5. **Drawer Chat & Guess Restriction:** Active drawer is blocked from chatting and submitting guesses (`DRAWER_CANNOT_GUESS`).
 6. **Anti-Spoiler Chat Shield:** Correct guesses are suppressed from public chat, broadcasting `"{Player} guessed the word!"` in green and shielding that player's subsequent messages from players who have not yet guessed.
 7. **Near-Miss Feedback:** Calculated via Levenshtein distance for words $\ge 4$ characters. If edit distance is $\le 2$, a private message (*"'{guess}' is very close!"*) is returned.
@@ -374,7 +409,8 @@ $$\text{ratio} = \frac{t_{\text{remaining}}}{t_{\text{duration}}}$$
 | `draw_start` | Bidirectional | `DrawStartPayload` | Initiates a canvas stroke with normalized $(x, y)$, color, size. |
 | `draw_move` | Bidirectional | `DrawMovePayload` | Appends a normalized coordinate point to the active stroke. |
 | `draw_end` | Bidirectional | `DrawEndPayload` | Concludes the active canvas stroke. |
-| `draw_undo` | Bidirectional | `DrawUndoPayload` | Removes the drawer's previous stroke across all clients. |
+| `draw_fill` | Bidirectional | `DrawFillPayload` | Broadcasts normalized fill coordinates $(x, y)$ and target color across room clients. |
+| `draw_undo` | Bidirectional | `DrawUndoPayload` | Removes the drawer's previous action (stroke or fill) across all clients. |
 | `canvas_clear` | Bidirectional | `CanvasClearPayload` | Wipes the entire canvas across all clients. |
 | `chat_message` | Client $\rightarrow$ Server | `ChatInputPayload` | Submits a chat message or guess attempt. |
 | `play_again` | Client $\rightarrow$ Server | `PlayAgainPayload` | Host resets the game back to the lobby with scores zeroed. |
@@ -385,7 +421,7 @@ $$\text{ratio} = \frac{t_{\text{remaining}}}{t_{\text{duration}}}$$
 | `timer_tick` | Server $\rightarrow$ Client | `TimerTickPayload` | 1-second authoritative countdown tick. |
 | `hint_revealed` | Server $\rightarrow$ Client | `HintRevealedPayload` | Broadcasts progressive letter reveals for guessers. |
 | `draw_data` | Server $\rightarrow$ Client | `DrawDataPayload` | Broadcasts normalized stroke data to guesser canvases. |
-| `draw_sync` | Server $\rightarrow$ Client | `DrawSyncPayload` | Replays full canvas stroke history to newly joined clients. |
+| `draw_sync` | Server $\rightarrow$ Client | `DrawSyncPayload` | Replays full canvas history (strokes and fills) on undo or mid-round player join. |
 | `chat_broadcast`| Server $\rightarrow$ Client | `ChatMessagePayload` | Broadcasts chat message or system announcement. |
 | `correct_guess` | Server $\rightarrow$ Client | `CorrectGuessPayload` | Broadcasts that a player guessed the word with points earned. |
 | `round_end` | Server $\rightarrow$ Client | `RoundEndPayload` | Concludes turn, reveals secret word, and details points recap. |
@@ -404,6 +440,7 @@ $$\text{ratio} = \frac{t_{\text{remaining}}}{t_{\text{duration}}}$$
 5. **Anti-Spoiler Chat Shield:** Submitting the secret word suppresses the message text from public chat, broadcasts a green announcement, and hides subsequent messages from that player from un-guessed players.
 6. **Room-Scoped Duplicate Name Numbering:** Disambiguates duplicate nicknames with stable join-order suffixes (`Alice 1`, `Alice 2`, `Alice 3`) that remain unchanged when players depart.
 7. **Native Web Audio Chimes:** Join chimes are synthesized directly in the browser using the Web Audio API (`AudioContext`), eliminating external audio asset requests and respecting browser autoplay gesture policies.
+8. **Canvas Flood Fill & Unified Action History:** Implements a high-performance, non-recursive 4-way stack flood fill with outline tolerance on canvas `ImageData`. Freehand strokes and paint fills are tracked as first-class actions in `DrawingState`, supporting drawer authorization, normalized cross-device sync, mid-round join synchronization, and deterministic undo.
 
 ---
 
@@ -471,11 +508,14 @@ npm run test:m3
 
 # 7. Milestone 4: Chat guessing, time-based scoring formulas, anti-spoiler shield, and podium
 npm run test:m4
+
+# 8. Canvas Fill / Paint Bucket tool flood fill algorithm, server authority, and undo sync
+npm run test:fill
 ```
 
 ### Verified Test Results Summary
 | Test Suite | Scope & Scenarios Verified | Verified Result |
-| :--- | :--- | :---: |
+| :--- | :--- | :--- |
 | `test:names` | Validates unique names (`Alice`), join-order duplicate suffixes (`Alice 1`, `alice 2`, `ALICE 3`), stable non-renumbering upon departure, new arrivals receiving next number (`Alice 4`), copycat number disambiguation (`Alice 4 2`), room isolation, and display name consistency across chat. | **PASSED** |
 | `test:flow` | Validates word selection choices sent strictly to drawer socket, guessers on waiting screen, 15s selection countdown, drawing countdown starting only after selection, later turn rotations, and Play Again lobby reset. | **PASSED** |
 | `test:join` | Validates `player_joined` event emitted once per actual join, audio chime contracts, and suppression on setting updates or ready toggles. | **PASSED** |
@@ -483,6 +523,7 @@ npm run test:m4
 | `test:m2` | Validates public matchmaking, private room codes, setting bounds, host migration on disconnect, and minimum 2-player start gate. | **PASSED** |
 | `test:m3` | Validates real-time canvas stroke sync, normalized coordinates, drawer tool exclusivity, undo last stroke, canvas clear, and timed letter hints. | **PASSED** |
 | `test:m4` | Validates server-side guess matching, time-based score formula calculation, drawer point awards, anti-spoiler chat shield, and game-over podium. | **PASSED** |
+| `test:fill` | Validates unit tests for 4-way flood fill algorithm, closed outline preservation, open area boundary filling, redundant fill no-ops, server `NOT_DRAWER` authorization, multiplayer `draw_fill` sync, and undo popping fills from history. | **PASSED** |
 | `npm run build` | Compiles `@skribbl/shared`, bundles `@skribbl/client` into `client/dist`, and transpiles `@skribbl/server` into `server/dist`. | **PASSED (0 Errors)** |
 
 ---
