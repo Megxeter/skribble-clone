@@ -1,6 +1,8 @@
 # skribbl.io Clone — Real-Time Multiplayer Drawing & Guessing Game
 
-An end-to-end, browser-based real-time multiplayer drawing and guessing game modeled after [skribbl.io](https://skribbl.io/). Built with **React 19**, **TypeScript**, **Vite**, **Node.js**, **Express**, and **Socket.IO**.
+🎮 **Live Game:** https://skribble-clone-mu.vercel.app
+
+An end-to-end, browser-based real-time multiplayer drawing and guessing game modeled after [skribbl.io](https://skribbl.io/). Built with **React 19**, **TypeScript**, **Vite**, **Node.js**, **Express**, and **Socket.IO**. The frontend is deployed on **Vercel** and the backend is deployed on **Render**.
 
 ---
 
@@ -546,82 +548,54 @@ npm run test:fill
 
 ## 10. Deployment Guide: Split Vercel + Render Deployment & Dashboard Settings
 
-The production deployment uses a **split deployment architecture**:
-1. **Frontend on Vercel:** Static React 19 single-page application served via Vercel's global Edge CDN, utilizing client-side routing configured in [`vercel.json`](vercel.json).
-2. **Backend on Render:** Persistent Node.js/Express web service managing long-lived Socket.IO WebSockets, in-memory room lifecycle (`RoomManager`), game timers, word masking, scoring math, and authoritative validation.
-
-> **Note:** Deployment configuration and cross-origin communication scripts are fully implemented and verified locally. The service is ready for deployment following the steps below. (No live URLs are active yet).
+The application is deployed and live using a **split deployment architecture**:
+* **Frontend:** Deployed on **Vercel** at [https://skribble-clone-mu.vercel.app](https://skribble-clone-mu.vercel.app)
+* **Backend:** Deployed on **Render** at `https://skribble-clone-sgpg.onrender.com` (Health endpoint: [https://skribble-clone-sgpg.onrender.com/health](https://skribble-clone-sgpg.onrender.com/health))
 
 ```text
 [ Browser Player ] ──(HTTPS: Static Assets & HTML)──► [ Vercel Edge Network ]
+        │                                              (skribble-clone-mu.vercel.app)
         │
         └──────(WSS/HTTPS: WebSockets & /health)─────► [ Render Node Backend ]
-                (Origin checked against CLIENT_ORIGINS)
+                (Origin checked against CLIENT_ORIGINS) (skribble-clone-sgpg.onrender.com)
 ```
 
 ---
 
-### Step-by-Step Deployment Instructions
+### Actual Production Deployment Settings
 
-#### Step 1: Deploy Backend on Render
-Deploy the persistent backend first so you have its HTTPS origin for the frontend configuration:
+#### 1. Vercel (Frontend)
+The frontend is hosted on Vercel as a static Single-Page Application (SPA) with automated edge routing configured in [`vercel.json`](vercel.json):
 
-1. Push this repository to your GitHub account.
-2. In the [Render Dashboard](https://dashboard.render.com/), click **New + > Web Service**.
-3. Connect your GitHub repository and enter these exact settings:
+* **Live Demo:** [https://skribble-clone-mu.vercel.app](https://skribble-clone-mu.vercel.app)
+* **Root Directory:** `./`
+* **Framework:** `Vite`
+* **Install Command:** `npm ci`
+* **Build Command:** `npm run build:frontend`
+* **Output Directory:** `client/dist`
+* **Environment Variables:**
+  * `VITE_BACKEND_URL`: `https://skribble-clone-sgpg.onrender.com`
 
-| Setting | Value | Notes |
-| :--- | :--- | :--- |
-| **Name** | `skribbl-clone-backend` | Or any unique service name |
-| **Region** | Any preferred region | e.g. Frankfurt, Oregon, Ohio |
-| **Branch** | `main` | Production branch |
-| **Root Directory** | *(leave blank / repository root)* | Root of the monorepo |
-| **Runtime** | `Node` | Node.js environment |
-| **Build Command** | `npm ci && npm run build:backend` | Installs dependencies and compiles shared + server |
-| **Start Command** | `npm start` | Runs `node server/dist/server.js` |
-| **Health Check Path**| `/health` | Render polls this endpoint for availability |
-| **Plan Type** | `Free` | Standard free web service |
+#### 2. Render (Backend)
+The persistent Node.js web service on Render handles Socket.IO WebSockets, game timers, in-memory rooms, word matching, and scoring:
 
-4. In the **Environment Variables** section on Render, add:
-   * **`NODE_ENV`**: `production`
-   * **`CLIENT_ORIGINS`**: Set to `*` initially during first boot, or set directly to your expected Vercel URL (e.g. `https://<your-project>.vercel.app,http://localhost:5173`).
-   *(Note: `PORT` is automatically injected by Render's infrastructure; the server binds to `process.env.PORT` automatically).*
-5. Click **Create Web Service**. Wait for the build and deployment to succeed.
-6. Copy your assigned Render HTTPS URL (e.g. `https://skribbl-clone-backend.onrender.com`).
-
----
-
-#### Step 2: Deploy Frontend on Vercel
-Now deploy the client SPA on Vercel, pointing it to the live Render backend:
-
-1. In the [Vercel Dashboard](https://vercel.com/dashboard), click **Add New... > Project**.
-2. Import your GitHub repository.
-3. Configure the exact project settings:
-
-| Setting | Value | Notes |
-| :--- | :--- | :--- |
-| **Framework Preset** | `Vite` | Detected automatically or select Vite |
-| **Root Directory** | `./` | Monorepo repository root |
-| **Install Command** | `npm ci` | Installs monorepo workspace dependencies |
-| **Build Command** | `npm run build:frontend` | Compiles `@skribbl/shared` first, then bundles `@skribbl/client` |
-| **Output Directory** | `client/dist` | Directory containing compiled static assets |
-
-4. Under **Environment Variables**, add:
-   * **`VITE_BACKEND_URL`**: `https://<your-backend-name>.onrender.com` *(The exact HTTPS origin of your Render backend copied from Step 1, without trailing slash).*
-5. Click **Deploy**. Vercel will install dependencies, build the shared package, compile the frontend bundle with the backend URL configured, and deploy to your Vercel URL (e.g. `https://<your-project>.vercel.app`).
+* **Live Service:** `https://skribble-clone-sgpg.onrender.com`
+* **Health Endpoint:** [https://skribble-clone-sgpg.onrender.com/health](https://skribble-clone-sgpg.onrender.com/health)
+* **Root Directory:** repository root (`./`)
+* **Build Command:** `npm ci --include=dev && npm run build:backend`
+* **Start Command:** `npm start`
+* **Plan Type:** `Free`
+* **Environment Variables:**
+  * `NODE_ENV`: `production`
+  * `CLIENT_ORIGINS`: `https://skribble-clone-mu.vercel.app`
+  *(Note: `PORT` is dynamically injected by Render).*
 
 ---
 
-#### Step 3: Lock Down CORS on Render
-Once your Vercel deployment completes and you have the final frontend domain:
+### Free-Tier Cold Starts & Room Persistence
 
-1. Return to the [Render Dashboard](https://dashboard.render.com/) and navigate to your `skribbl-clone-backend` service.
-2. Go to **Environment** settings.
-3. Update **`CLIENT_ORIGINS`** to contain your exact production frontend origin and local dev URL:
-   ```text
-   CLIENT_ORIGINS=https://<your-project>.vercel.app,http://localhost:5173
-   ```
-4. Click **Save Changes**. Render will automatically restart the service with the restricted CORS policy.
+* **Cold Start Wake Delays:** On Render's free tier, the backend web service spins down into sleep mode after 15 minutes of inactivity. When accessed after being idle, the backend may take **about a minute or longer (~50–70s)** to wake up. The client frontend handles this automatically by retrying Socket.IO connections (`reconnectionAttempts: Infinity`) and displaying an inline connection status banner until the server responds.
+* **In-Memory Room Reset:** Rooms, games, active player lists, and drawing histories reside strictly in Node.js server memory (`RoomManager`). Whenever the Render backend restarts or wakes from sleep, all in-memory room sessions are reset. Disconnected players can simply create or join a new room once the server is awake.
 
 ---
 
@@ -644,7 +618,7 @@ Once your Vercel deployment completes and you have the final frontend domain:
   }
   ```
 * **No Socket.IO Routing through Vercel:** Vercel serves only static client bundles. WebSockets and backend HTTP calls are never proxied or routed through Vercel serverless functions. The browser client opens a direct persistent WebSocket connection to the Render backend via `VITE_BACKEND_URL`.
-* **Frontend Invitation Links:** Invitation links are generated via `window.location.origin` (e.g. `https://<your-project>.vercel.app/?room=ABC123`). They remain strictly on the frontend domain and automatically populate the room code on arrival.
+* **Frontend Invitation Links:** Invitation links are generated via `window.location.origin` (e.g. `https://skribble-clone-mu.vercel.app/?room=ABC123`). They remain strictly on the frontend domain and automatically populate the room code on arrival.
 
 #### 2. Blueprint Deployment (`render.yaml`)
 Alternatively, deploy the backend via Render Blueprint using the included [`render.yaml`](render.yaml):
@@ -654,7 +628,7 @@ services:
     name: skribbl-clone-backend
     env: node
     plan: free
-    buildCommand: npm ci && npm run build:backend
+    buildCommand: npm ci --include=dev && npm run build:backend
     startCommand: npm start
     healthCheckPath: /health
     envVars:
@@ -675,7 +649,7 @@ When `VITE_BACKEND_URL` is omitted or unset, the application seamlessly preserve
 
 1. **Free-Tier Sleeping Backend Delays (Cold Starts):**
    * On Render's free tier, services spin down into sleep mode after 15 minutes of inactivity.
-   * When a player first visits the Vercel frontend, the browser initiates a connection that triggers a cold start on Render. Waking the backend typically takes **30 to 60+ seconds**.
+   * When a player first visits the Vercel frontend, the browser initiates a connection that triggers a cold start on Render. Waking the backend typically takes **about a minute or longer** (~50–70s).
    * The client application handles this gracefully:
      * Socket.IO is configured with `reconnectionAttempts: Infinity` and exponential backoff, retrying continuously until the backend wakes.
      * The Landing page displays a clear status banner: `Connecting to game server... If waking from free-tier sleep, this may take 30–60 seconds.`
@@ -684,7 +658,7 @@ When `VITE_BACKEND_URL` is omitted or unset, the application seamlessly preserve
 2. **Ephemeral In-Memory Room State:**
    * Rooms, active games, player rosters, and canvas histories reside entirely in Node.js server memory (`RoomManager`).
    * Empty rooms are automatically pruned after 30 seconds of inactivity.
-   * Because state is held in memory, any backend server restart, manual redeploy, or free-tier sleep cycle resets active rooms and disconnects ongoing matches. Players in disconnected rooms simply need to re-create or re-join rooms.
+   * Because state is held in memory, restarting or sleeping the Render backend resets all in-memory rooms and disconnects active matches. Players in disconnected rooms simply need to re-create or re-join rooms.
 3. **Single-Instance Scaling Ceiling:**
    * The server runs as a single Node.js process. Scaling horizontally across multiple server instances would require an external pub/sub store (such as a Redis adapter for Socket.IO) to synchronize room events across instances.
 4. **Guest Nicknames (No Persistent Database):**
