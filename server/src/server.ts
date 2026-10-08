@@ -12,14 +12,28 @@ import { registerChatHandlers } from './handlers/chatHandler';
 const app = express();
 const server = http.createServer(app);
 
+// Configure HTTP and Socket.IO CORS using CLIENT_ORIGINS (comma-separated list).
+// When unset, falls back to '*' to preserve local dev proxy and unified single-port hosting.
+const rawClientOrigins = process.env.CLIENT_ORIGINS?.trim();
+const allowedOrigins: string | string[] = rawClientOrigins
+  ? rawClientOrigins.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean)
+  : '*';
+
+const corsOrigin = Array.isArray(allowedOrigins) && allowedOrigins.length === 1
+  ? allowedOrigins[0]
+  : (Array.isArray(allowedOrigins) && allowedOrigins.length === 0 ? '*' : allowedOrigins);
+
 // Enable CORS for API requests
-app.use(cors());
+app.use(cors({
+  origin: corsOrigin,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 
 // Initialize Socket.IO on the shared HTTP instance
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: corsOrigin,
     methods: ['GET', 'POST']
   }
 });

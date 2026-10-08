@@ -12,6 +12,7 @@ import {
 interface LandingProps {
   socket: Socket | null;
   isConnected: boolean;
+  isConnecting?: boolean;
   initialRoomCode?: string;
   errorMessage?: string | null;
   onClearError?: () => void;
@@ -20,6 +21,7 @@ interface LandingProps {
 export const Landing: React.FC<LandingProps> = ({
   socket,
   isConnected,
+  isConnecting,
   initialRoomCode = '',
   errorMessage,
   onClearError,
@@ -92,6 +94,18 @@ export const Landing: React.FC<LandingProps> = ({
               Dismiss
             </button>
           )}
+        </div>
+      )}
+
+      {/* Backend Connection / Cold Start Wake Banner */}
+      {!isConnected && (
+        <div className="alert-banner alert-warning" role="status" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <span className="status-dot connecting" style={{ flexShrink: 0 }}></span>
+          <span>
+            {isConnecting
+              ? 'Connecting to game server... If waking from free-tier sleep, this may take 30–60 seconds.'
+              : 'Disconnected from game server. Attempting to reconnect...'}
+          </span>
         </div>
       )}
 

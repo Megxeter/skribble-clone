@@ -695,8 +695,24 @@ body {
   background-color: var(--color-success);
 }
 
+.status-dot.connecting {
+  background-color: var(--color-warning);
+  animation: pulse-connecting 1.5s ease-in-out infinite;
+}
+
 .status-dot.offline {
   background-color: var(--color-danger);
+}
+
+@keyframes pulse-connecting {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
 }
 
 .footer-sound-toggle-btn {

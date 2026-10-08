@@ -19,9 +19,10 @@ import {
   setSoundEnabled,
   setupAudioUnlockListeners,
 } from './utils/sound';
+import { BACKEND_URL } from './config';
 
 export const App: React.FC = () => {
-  const { socket, isConnected, socketId, transport } = useSocket();
+  const { socket, isConnected, isConnecting, socketId, transport } = useSocket();
 
   const [roomState, setRoomState] = useState<RoomStatePayload | null>(null);
   const [roundStartData, setRoundStartData] = useState<RoundStartPayload | null>(null);
@@ -155,7 +156,8 @@ export const App: React.FC = () => {
   // Fetch server health on demand
   const fetchHealth = async () => {
     try {
-      const res = await fetch('/health');
+      const endpoint = BACKEND_URL ? `${BACKEND_URL}/health` : '/health';
+      const res = await fetch(endpoint);
       if (res.ok) {
         const data: HealthResponse = await res.json();
         setHealthData(data);
@@ -187,6 +189,7 @@ export const App: React.FC = () => {
         <Landing
           socket={socket}
           isConnected={isConnected}
+          isConnecting={isConnecting}
           initialRoomCode={initialRoomCode}
           errorMessage={errorMessage}
           onClearError={() => setErrorMessage(null)}
@@ -215,8 +218,14 @@ export const App: React.FC = () => {
       <footer className="footer-system">
         <div className="footer-bar">
           <div className="footer-status">
-            <span className={`status-dot ${isConnected ? 'online' : 'offline'}`}></span>
-            <span>{isConnected ? `Connected (${transport})` : 'Disconnected'}</span>
+            <span className={`status-dot ${isConnected ? 'online' : isConnecting ? 'connecting' : 'offline'}`}></span>
+            <span>
+              {isConnected
+                ? `Connected (${transport})`
+                : isConnecting
+                ? 'Connecting to server (waking backend)...'
+                : 'Disconnected'}
+            </span>
             <button
               type="button"
               className="footer-sound-toggle-btn"

@@ -1,11 +1,13 @@
 services:
   - type: web
-    name: skribbl-clone
+    name: skribbl-clone-backend
     env: node
     plan: free
-    buildCommand: npm run build
-    startCommand: npm run start
+    buildCommand: npm ci && npm run build:backend
+    startCommand: npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: CLIENT_ORIGINS
+        sync: false

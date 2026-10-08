@@ -5,16 +5,15 @@
 The skribbl.io clone is built on a **Server-Authoritative State Machine** pattern driven by **Socket.IO WebSockets**:
 * **The Server is the Single Source of Truth:** Clients never calculate points, decide turn order, decrement the round clock, or validate guesses. The server runs authoritative timers and broadcasts state events.
 * **Clients are Reactive Views:** Clients capture user input (drawing strokes, chat messages, button clicks) and render the canvas and UI based strictly on server events.
-* **Unified Monorepo on Render:** A single Node.js web service hosts both the compiled React + Vite frontend statically and the Socket.IO WebSocket gateway on the same HTTP port.
+* **Split Deployment Architecture:** The static React 19 frontend deploys to Vercel's global Edge CDN, while the persistent Node.js/Express + Socket.IO game server runs on Render with CORS restricted via `CLIENT_ORIGINS`. (Unified single-port hosting remains supported as a fallback when `VITE_BACKEND_URL` is unset).
 
 ```text
-[ Browser Client (React 19 + Vite) ]
+[ Browser Client on Vercel (React 19 + Vite) ]
         │  ▲
-        │  │ Real-Time WebSocket Events (Normalized Coordinates [0.0 - 1.0])
-        ▼  │
-[ Unified Express + Socket.IO Server (Node.js) ]
-  ├── Static Hosting: Serves client/dist bundle on /
-  ├── Health Endpoint: GET /health (Render healthcheck probe)
+        │  │ Cross-Origin Socket.IO (via VITE_BACKEND_URL) & REST /health
+        ▼  │ Validated via CLIENT_ORIGINS CORS
+[ Node.js + Socket.IO Server on Render ]
+  ├── Health Endpoint: GET /health (Render healthcheck probe & CORS verification)
   ├── RoomManager: In-memory public matchmaking & private room registry
   ├── Game State Machine: Turn sequencer, 1s countdown clock, scoring engine
   └── WordBank: Embedded 300-word curated dictionary
@@ -52,7 +51,7 @@ skribbl-clone/
 
 ## 3. Key Architectural Invariants
 
-1. **Unified Deployment:** Express serves the compiled Vite client bundle and attaches Socket.IO on the same HTTP server and port (`process.env.PORT || 3000`). This completely eliminates CORS issues and WebSocket proxy drops on free hosting.
+1. **Split Production Architecture:** The static React client is distributed globally on Vercel's Edge CDN, while Socket.IO and the authoritative game engine reside on a persistent Render Node.js instance. Cross-origin requests are secured using `CLIENT_ORIGINS`. When `VITE_BACKEND_URL` is omitted, the server seamlessly serves `client/dist` directly for unified single-port local hosting.
 2. **Normalized Coordinates:** Drawing coordinates $(x, y)$ are transmitted as relative ratios ($0.0 \le x, y \le 1.0$). Receiving clients scale these ratios to their local canvas dimensions, ensuring cross-device resolution fidelity.
 3. **Secret Word Secrecy:** Plaintext secret words are only transmitted to the active drawer socket. Guesser clients receive only masked blanks (`_ _ _ _`) until the turn concludes.
 4. **Anti-Spoiler Chat Shield:** Guessed words are suppressed from chat. When a player guesses correctly, only a system announcement is shown, and subsequent messages from that player are hidden from players who have not yet guessed.

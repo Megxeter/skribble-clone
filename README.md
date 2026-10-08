@@ -15,7 +15,7 @@ An end-to-end, browser-based real-time multiplayer drawing and guessing game mod
 7. [Implementation Overview](#7-implementation-overview)
 8. [Installation & Local Run Commands](#8-installation--local-run-commands)
 9. [Testing Instructions & Verified Results](#9-testing-instructions--verified-results)
-10. [Planned Render Deployment Instructions](#10-planned-render-deployment-instructions)
+10. [Deployment Guide: Split Vercel + Render Deployment & Dashboard Settings](#10-deployment-guide-split-vercel--render-deployment--dashboard-settings)
 11. [Operations Notes & Known Limitations](#11-operations-notes--known-limitations)
 12. [Additional Documentation Index](#12-additional-documentation-index)
 13. [License](#13-license)
@@ -43,7 +43,7 @@ The application solves these problems through:
 * **Anti-Spoiler Chat Shield & Word Protection:** Plaintext secret words are never transmitted to guesser clients. Correct guesses are suppressed from public chat, replaced with system announcements, and subsequent messages from that player are shielded from players who have not yet deduced the word.
 * **Persistent Event Router:** Persistent Socket.IO listeners at the root application coordinator eliminate React lifecycle race conditions.
 * **Room-Scoped Duplicate Name Numbering:** Stable join-order suffix numbering (`Alice 1`, `Alice 2`, `Alice 3`) that remains permanent across player departures without renumbering.
-* **Unified Single-Port Deployment Topology:** Express serves the compiled Vite static client bundle and attaches Socket.IO to the exact same HTTP server instance and port, eliminating CORS and proxy complications.
+* **Split Production Deployment:** Global static Edge distribution on Vercel paired with a persistent Node.js/Express + Socket.IO backend on Render, with strict CORS protection via `CLIENT_ORIGINS` (and optional unified single-port local hosting).
 
 ---
 
@@ -127,33 +127,33 @@ The application solves these problems through:
 | **Backend** | Node.js & Express | v18+ / v4.21.2 | HTTP server, REST endpoints (`/health`), and static bundle hosting |
 | **Real-Time** | Socket.IO | v4.8.1 | Low-latency bidirectional WebSocket gateway and room multiplexing |
 | **Styling** | Vanilla CSS | CSS3 | Custom property design system, accessible contrast, responsive layout |
-| **Deployment** | Render Web Service | Node.js | Single-service unified static serving and WebSocket gateway |
+| **Deployment** | Vercel & Render | Cloud Platform | Split architecture: Vercel frontend SPA + Render persistent Node.js backend (with optional unified mode) |
 
 ---
 
 ## 4. High-Level Design (HLD): Architecture & Communication Flow
 
 ### System Architecture
-The application runs as a cohesive client-server system organized around server-authoritative state management:
-
-```text
+The application runs as a cohesive client-server system organized around server-authoritative state management:```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        Browser Client (React 19)                       │
+│               Frontend: Browser Client on Vercel (React 19)            │
 │  ├── App.tsx: Persistent Socket Router & Event Coordinator             │
 │  ├── Canvas.tsx: 2D Canvas Engine (Normalized Coordinates [0.0 - 1.0]) │
 │  ├── Chat.tsx: Chat Feed & Anti-Spoiler Guess Input                    │
 │  └── Sound: Native Web Audio Chime & Autoplay Gesture Unlock           │
 └───────────────────────────────────▲────────────────────────────────────┘
                                     │
-               WebSocket (Socket.IO v4) & HTTP REST (/health)
+    Cross-Origin WebSocket (Socket.IO v4 via VITE_BACKEND_URL)
+    & HTTP REST (/health) protected by CLIENT_ORIGINS CORS
                                     │
 ┌───────────────────────────────────▼────────────────────────────────────┐
-│                    Unified Node.js Express Server                      │
+│              Backend: Node.js Express Server on Render                 │
 │                                                                        │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │ Express HTTP Layer                                               │  │
-│  │  ├── GET /health (Uptime and status probe)                       │  │
-│  │  └── Static File Server (Serves client/dist with SPA fallback)   │  │
+│  │  ├── GET /health (Authoritative health probe & CORS check)       │  │
+│  │  ├── CORS Middleware (Restricted to exact CLIENT_ORIGINS)        │  │
+│  │  └── Static Fallback (Optional unified mode when serving dist)   │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │                                                                        │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
@@ -165,8 +165,8 @@ The application runs as a cohesive client-server system organized around server-
 │                                                                        │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │ Domain State Machines & Services                                 │  │
-│  │  ├── RoomManager: In-memory room lookup and 30s cleanup timer    │  │
-│  │  ├── Room: Room lifecycle, duplicate name disambiguation engine  │  │
+│  │  ├── RoomManager: In-memory room registry and 30s cleanup timer  │  │
+│  │  ├── Room: Room lifecycle & duplicate name disambiguation engine │  │
 │  │  ├── Game: Turn rotation, 15s selection, 1s draw timer, scoring  │  │
 │  │  └── WordService: ~300 curated English word dictionary           │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
@@ -174,8 +174,8 @@ The application runs as a cohesive client-server system organized around server-
 ```
 
 ### Communication Topology
+* **Cross-Origin Socket.IO Connection:** In production split deployment, the browser client connects directly to the Render backend origin (`VITE_BACKEND_URL`). The backend validates incoming origins against `CLIENT_ORIGINS`.
 * **Room-Isolated Sockets:** Each active match maps to a Socket.IO room channel: `socket.join(room_${roomId})`. All gameplay events, chat messages, and canvas strokes broadcast strictly within that channel.
-* **Persistent Event Router:** Client socket listeners are initialized once at the root `App.tsx` level. This decouples event handling from individual component mount/unmount lifecycles, ensuring word selection payloads and game-over events are never dropped during screen transitions.
 * **Normalized Data Transport:** Drawing strokes and flood fills are broadcast as float coordinates ($0.0 \dots 1.0$), ensuring viewers on any device scale them to their local canvas dimensions without coordinate drift.
 
 ### End-to-End Game Turn Flow
@@ -458,6 +458,18 @@ cd skribbl-clone
 npm install
 ```
 
+### Building Packages
+```bash
+# Build frontend only (builds shared dependency first, outputs to client/dist)
+npm run build:frontend
+
+# Build backend only (builds shared dependency first, outputs to server/dist)
+npm run build:backend
+
+# Full monorepo build (builds shared, client, and server)
+npm run build
+```
+
 ### Running Locally
 
 #### Mode 1: Production Mode (Unified Single Port)
@@ -488,34 +500,38 @@ npm run dev
 The codebase includes multi-client automated test scripts executing realistic multi-player scenarios:
 
 ```bash
-# 1. Room-scoped duplicate name numbering, departure stability, and room isolation
+# 1. Cross-origin CORS headers, allowed/disallowed origins, and Socket.IO connectivity
+npm run test:cors
+
+# 2. Room-scoped duplicate name numbering, departure stability, and room isolation
 npm run test:names
 
-# 2. Word selection flow, timing synchronization, and Play Again lobby reset
+# 3. Word selection flow, timing synchronization, and Play Again lobby reset
 npm run test:flow
 
-# 3. Player join toast notifications, audio chime contracts, and duplicate suppression
+# 4. Player join toast notifications, audio chime contracts, and duplicate suppression
 npm run test:join
 
-# 4. Milestone 1: Healthcheck, static bundle serving, and basic Socket.IO connectivity
+# 5. Milestone 1: Healthcheck, static bundle serving, and basic Socket.IO connectivity
 npm run test:m1
 
-# 5. Milestone 2: Multi-client matchmaking, private codes, room limits, and host migration
+# 6. Milestone 2: Multi-client matchmaking, private codes, room limits, and host migration
 npm run test:m2
 
-# 6. Milestone 3: Canvas drawing sync, normalized coordinates, turn rotation, and hints
+# 7. Milestone 3: Canvas drawing sync, normalized coordinates, turn rotation, and hints
 npm run test:m3
 
-# 7. Milestone 4: Chat guessing, time-based scoring formulas, anti-spoiler shield, and podium
+# 8. Milestone 4: Chat guessing, time-based scoring formulas, anti-spoiler shield, and podium
 npm run test:m4
 
-# 8. Canvas Fill / Paint Bucket tool flood fill algorithm, server authority, and undo sync
+# 9. Canvas Fill / Paint Bucket tool flood fill algorithm, server authority, and undo sync
 npm run test:fill
 ```
 
 ### Verified Test Results Summary
 | Test Suite | Scope & Scenarios Verified | Verified Result |
 | :--- | :--- | :--- |
+| `test:cors` | Validates cross-origin GET `/health` endpoint with allowed origin (CORS headers confirmed), rejection of unauthorized origins, and cross-origin Socket.IO bidirectional connection. | **PASSED** |
 | `test:names` | Validates unique names (`Alice`), join-order duplicate suffixes (`Alice 1`, `alice 2`, `ALICE 3`), stable non-renumbering upon departure, new arrivals receiving next number (`Alice 4`), copycat number disambiguation (`Alice 4 2`), room isolation, and display name consistency across chat. | **PASSED** |
 | `test:flow` | Validates word selection choices sent strictly to drawer socket, guessers on waiting screen, 15s selection countdown, drawing countdown starting only after selection, later turn rotations, and Play Again lobby reset. | **PASSED** |
 | `test:join` | Validates `player_joined` event emitted once per actual join, audio chime contracts, and suppression on setting updates or ready toggles. | **PASSED** |
@@ -528,54 +544,155 @@ npm run test:fill
 
 ---
 
-## 10. Planned Render Deployment Instructions
+## 10. Deployment Guide: Split Vercel + Render Deployment & Dashboard Settings
 
-The application is prepared for deployment as a **Single Unified Web Service** on Render. Express statically serves the compiled Vite frontend bundle from `client/dist` and handles real-time Socket.IO WebSockets on the exact same HTTP port.
+The production deployment uses a **split deployment architecture**:
+1. **Frontend on Vercel:** Static React 19 single-page application served via Vercel's global Edge CDN, utilizing client-side routing configured in [`vercel.json`](vercel.json).
+2. **Backend on Render:** Persistent Node.js/Express web service managing long-lived Socket.IO WebSockets, in-memory room lifecycle (`RoomManager`), game timers, word masking, scoring math, and authoritative validation.
 
-> **Note:** Deployment configuration and scripts are fully verified and ready. The service has not yet been deployed to production.
+> **Note:** Deployment configuration and cross-origin communication scripts are fully implemented and verified locally. The service is ready for deployment following the steps below. (No live URLs are active yet).
 
-### Method 1: Blueprint Deployment via `render.yaml`
-1. Push this repository to GitHub.
-2. In the [Render Dashboard](https://dashboard.render.com/), click **New + > Blueprint**.
-3. Select your repository. Render automatically reads [`render.yaml`](render.yaml) and provisions the service.
+```text
+[ Browser Player ] ──(HTTPS: Static Assets & HTML)──► [ Vercel Edge Network ]
+        │
+        └──────(WSS/HTTPS: WebSockets & /health)─────► [ Render Node Backend ]
+                (Origin checked against CLIENT_ORIGINS)
+```
 
-### Method 2: Manual Web Service Setup
-1. In the Render Dashboard, click **New + > Web Service**.
-2. Connect your GitHub repository and specify:
-   * **Name:** `skribbl-clone`
-   * **Environment:** `Node`
-   * **Region:** Any available region
-   * **Branch:** `main`
-   * **Build Command:** `npm run build`
-   * **Start Command:** `npm run start`
-   * **Health Check Path:** `/health`
-   * **Plan Type:** `Free`
+---
 
-### Render Blueprint Configuration (`render.yaml`)
+### Step-by-Step Deployment Instructions
+
+#### Step 1: Deploy Backend on Render
+Deploy the persistent backend first so you have its HTTPS origin for the frontend configuration:
+
+1. Push this repository to your GitHub account.
+2. In the [Render Dashboard](https://dashboard.render.com/), click **New + > Web Service**.
+3. Connect your GitHub repository and enter these exact settings:
+
+| Setting | Value | Notes |
+| :--- | :--- | :--- |
+| **Name** | `skribbl-clone-backend` | Or any unique service name |
+| **Region** | Any preferred region | e.g. Frankfurt, Oregon, Ohio |
+| **Branch** | `main` | Production branch |
+| **Root Directory** | *(leave blank / repository root)* | Root of the monorepo |
+| **Runtime** | `Node` | Node.js environment |
+| **Build Command** | `npm ci && npm run build:backend` | Installs dependencies and compiles shared + server |
+| **Start Command** | `npm start` | Runs `node server/dist/server.js` |
+| **Health Check Path**| `/health` | Render polls this endpoint for availability |
+| **Plan Type** | `Free` | Standard free web service |
+
+4. In the **Environment Variables** section on Render, add:
+   * **`NODE_ENV`**: `production`
+   * **`CLIENT_ORIGINS`**: Set to `*` initially during first boot, or set directly to your expected Vercel URL (e.g. `https://<your-project>.vercel.app,http://localhost:5173`).
+   *(Note: `PORT` is automatically injected by Render's infrastructure; the server binds to `process.env.PORT` automatically).*
+5. Click **Create Web Service**. Wait for the build and deployment to succeed.
+6. Copy your assigned Render HTTPS URL (e.g. `https://skribbl-clone-backend.onrender.com`).
+
+---
+
+#### Step 2: Deploy Frontend on Vercel
+Now deploy the client SPA on Vercel, pointing it to the live Render backend:
+
+1. In the [Vercel Dashboard](https://vercel.com/dashboard), click **Add New... > Project**.
+2. Import your GitHub repository.
+3. Configure the exact project settings:
+
+| Setting | Value | Notes |
+| :--- | :--- | :--- |
+| **Framework Preset** | `Vite` | Detected automatically or select Vite |
+| **Root Directory** | `./` | Monorepo repository root |
+| **Install Command** | `npm ci` | Installs monorepo workspace dependencies |
+| **Build Command** | `npm run build:frontend` | Compiles `@skribbl/shared` first, then bundles `@skribbl/client` |
+| **Output Directory** | `client/dist` | Directory containing compiled static assets |
+
+4. Under **Environment Variables**, add:
+   * **`VITE_BACKEND_URL`**: `https://<your-backend-name>.onrender.com` *(The exact HTTPS origin of your Render backend copied from Step 1, without trailing slash).*
+5. Click **Deploy**. Vercel will install dependencies, build the shared package, compile the frontend bundle with the backend URL configured, and deploy to your Vercel URL (e.g. `https://<your-project>.vercel.app`).
+
+---
+
+#### Step 3: Lock Down CORS on Render
+Once your Vercel deployment completes and you have the final frontend domain:
+
+1. Return to the [Render Dashboard](https://dashboard.render.com/) and navigate to your `skribbl-clone-backend` service.
+2. Go to **Environment** settings.
+3. Update **`CLIENT_ORIGINS`** to contain your exact production frontend origin and local dev URL:
+   ```text
+   CLIENT_ORIGINS=https://<your-project>.vercel.app,http://localhost:5173
+   ```
+4. Click **Save Changes**. Render will automatically restart the service with the restricted CORS policy.
+
+---
+
+### Key Architectural Configurations
+
+#### 1. SPA Routing vs Socket.IO Separation
+* **[`vercel.json`](vercel.json)** configures client-side SPA routing by rewriting all URL paths (`/(.*)`) to `/index.html`:
+  ```json
+  {
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "installCommand": "npm ci",
+    "buildCommand": "npm run build:frontend",
+    "outputDirectory": "client/dist",
+    "rewrites": [
+      {
+        "source": "/(.*)",
+        "destination": "/index.html"
+      }
+    ]
+  }
+  ```
+* **No Socket.IO Routing through Vercel:** Vercel serves only static client bundles. WebSockets and backend HTTP calls are never proxied or routed through Vercel serverless functions. The browser client opens a direct persistent WebSocket connection to the Render backend via `VITE_BACKEND_URL`.
+* **Frontend Invitation Links:** Invitation links are generated via `window.location.origin` (e.g. `https://<your-project>.vercel.app/?room=ABC123`). They remain strictly on the frontend domain and automatically populate the room code on arrival.
+
+#### 2. Blueprint Deployment (`render.yaml`)
+Alternatively, deploy the backend via Render Blueprint using the included [`render.yaml`](render.yaml):
 ```yaml
 services:
   - type: web
-    name: skribbl-clone
-    runtime: node
+    name: skribbl-clone-backend
+    env: node
     plan: free
-    buildCommand: npm run build
-    startCommand: npm run start
+    buildCommand: npm ci && npm run build:backend
+    startCommand: npm start
     healthCheckPath: /health
-    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
+      - key: CLIENT_ORIGINS
+        sync: false
 ```
+
+#### 3. Optional Unified Local / Self-Hosted Mode
+When `VITE_BACKEND_URL` is omitted or unset, the application seamlessly preserves the single-port unified deployment topology:
+* `npm run build` compiles shared contracts, frontend assets to `client/dist`, and the backend server.
+* `npm start` serves the static bundle from `client/dist` and mounts Socket.IO on the same HTTP port (`http://localhost:3000`), with zero cross-origin configuration required.
 
 ---
 
 ## 11. Operations Notes & Known Limitations
 
-1. **In-Memory Room State:** Rooms, active games, and player sessions reside in Node.js server memory (`RoomManager`). Empty rooms are automatically pruned after 30 seconds of inactivity. Server restarts or cold-boot spins on free cloud tiers reset active rooms.
-2. **Single-Instance Architecture:** The application is architected for single-instance hosting. Scaling horizontally across multiple node instances would require an external Redis adapter for Socket.IO state synchronization.
-3. **Guest Nicknames (No Persistent Auth):** Players join instantly with nicknames without passwords, database migrations, or OAuth accounts.
-4. **Embedded Word Bank:** Word selection draws from a curated dictionary of ~300 common English words; custom word list imports are out of scope for this release.
-5. **Browser Audio Autoplay Policy:** In compliance with modern browser autoplay policies, the join chime activates after the user's initial interaction with the page (e.g., clicking Join or Create Room).
+1. **Free-Tier Sleeping Backend Delays (Cold Starts):**
+   * On Render's free tier, services spin down into sleep mode after 15 minutes of inactivity.
+   * When a player first visits the Vercel frontend, the browser initiates a connection that triggers a cold start on Render. Waking the backend typically takes **30 to 60+ seconds**.
+   * The client application handles this gracefully:
+     * Socket.IO is configured with `reconnectionAttempts: Infinity` and exponential backoff, retrying continuously until the backend wakes.
+     * The Landing page displays a clear status banner: `Connecting to game server... If waking from free-tier sleep, this may take 30–60 seconds.`
+     * The footer status indicator pulses amber: `Connecting to server (waking backend)...`.
+     * Join and create room buttons remain guarded until the connection is established, automatically unlocking once connected.
+2. **Ephemeral In-Memory Room State:**
+   * Rooms, active games, player rosters, and canvas histories reside entirely in Node.js server memory (`RoomManager`).
+   * Empty rooms are automatically pruned after 30 seconds of inactivity.
+   * Because state is held in memory, any backend server restart, manual redeploy, or free-tier sleep cycle resets active rooms and disconnects ongoing matches. Players in disconnected rooms simply need to re-create or re-join rooms.
+3. **Single-Instance Scaling Ceiling:**
+   * The server runs as a single Node.js process. Scaling horizontally across multiple server instances would require an external pub/sub store (such as a Redis adapter for Socket.IO) to synchronize room events across instances.
+4. **Guest Nicknames (No Persistent Database):**
+   * Players join instantly with nicknames without accounts, passwords, or database storage. Nicknames are scoped to each room and disambiguated with stable join-order numbers.
+5. **Embedded Word Bank:**
+   * Word selection draws from a curated built-in dictionary of ~300 common English nouns; custom word list imports are out of scope for this release.
+6. **Browser Audio Autoplay Policy:**
+   * In compliance with browser autoplay restrictions, player join audio chimes activate after the player's first interaction with the page (e.g. clicking Join or Create Room). Sound can be muted at any time via the footer sound toggle.
 
 ---
 

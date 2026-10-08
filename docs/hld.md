@@ -155,24 +155,26 @@ Rooms progress through an authoritative lifecycle governed by `Room.ts` and `Gam
 
 ## 5. Deployment Topology
 
-The application deploys as a **Single Web Service on Render** via `render.yaml`:
+The application is deployed using a **Split Architecture** across Vercel (Frontend SPA) and Render (Persistent Node.js Backend):
 
 ```text
-[ Incoming Web Traffic (HTTPS / WSS) ]
-                 │
-                 ▼
-     [ Render Unified Web Service ]
-                 │
-                 ▼ (process.env.PORT || 3000)
-    ┌───────────────────────────────┐
-    │ Express HTTP Server           │
-    │  ├── /health (Healthcheck)    │
-    │  ├── /socket.io (WebSockets)  │
-    │  └── /* (Vite SPA Static dist)│
-    └───────────────────────────────┘
+[ Incoming Web Traffic ]
+        │
+        ├──(HTTPS: Static Assets & Client SPA)──► [ Vercel Edge Network ]
+        │                                           │
+        │                                           └── client/dist (SPA Routing via vercel.json)
+        │
+        └──(WSS / HTTPS: Socket.IO & /health)───► [ Render Web Service ]
+                                                    │ (process.env.PORT || 3000)
+                                                    ├─ GET /health (Healthcheck probe)
+                                                    ├─ Socket.IO Gateway (CORS checked via CLIENT_ORIGINS)
+                                                    └─ In-Memory Room & Game Engine
 ```
 
 ### Deployment Characteristics
-* **Same-Origin Execution:** Express serves both the static React bundle (`client/dist`) and the Socket.IO server on the same HTTP server instance.
-* **Zero CORS Complications:** The client connects using relative origin `io()`, eliminating cross-domain configuration, cookie mismatches, and WebSocket proxy connection drops.
-* **Health Check Integration:** Render polls `GET /health` to confirm server availability and process uptime.
+* **Static Edge CDN Delivery:** Vercel serves the compiled React single-page application globally with instant asset delivery and zero server compute overhead for static files.
+* **Persistent WebSocket Gateway:** Render hosts the long-lived Express and Socket.IO server, sustaining bidirectional WebSockets, room event rooms, 1s game timers, and in-memory game state machines.
+* **CORS Protection:** Cross-origin HTTP and WebSocket connections are restricted via `CLIENT_ORIGINS`.
+* **Zero Socket.IO Proxying on Vercel:** The client connects directly to Render via `VITE_BACKEND_URL`, avoiding serverless execution limits and proxy drops.
+* **Health Check Integration:** Render continuously polls `GET /health` to confirm server availability and process uptime.
+* **Fallback Unified Mode:** When `VITE_BACKEND_URL` is omitted, Express serves `client/dist` directly on port 3000 for single-port unified self-hosting.
